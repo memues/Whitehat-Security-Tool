@@ -20,6 +20,6 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - name: Restore and reject known vulnerable packages
-        run: dotnet restore tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -warnaserror:NU1901,NU1902,NU1903,NU1904
+        run: dotnet restore tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -p:Configuration=Release -r win-x64 -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -warnaserror:NU1901,NU1902,NU1903,NU1904
       - name: Run smoke and security regression tests
         run: dotnet run --project tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -c Release --no-restore

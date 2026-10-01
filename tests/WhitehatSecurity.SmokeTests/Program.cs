@@ -8,6 +8,9 @@ using Microsoft.Win32;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 var failures = new List<string>();
 
@@ -405,6 +408,8 @@ Run("DNS provider names come from a single catalog", () =>
 Run("Uninstall cleanup restores automatic DNS and both DoH resolvers", () =>
 {
     var script = ElevationHelper.BuildCleanupScript();
+    Equal(true, script.IndexOf("$backup = Get-WhsDnsBackupPath", StringComparison.Ordinal)
+        < script.IndexOf("Get-NetFirewallRule", StringComparison.Ordinal));
 
     // Deciding from ServerAddresses alone pinned the DHCP-supplied
     // resolvers as a static configuration on uninstall.
@@ -438,7 +443,7 @@ Run("Privileged scripts run under a Restricted execution policy", () =>
     // MachinePolicy is Restricted, and that policy outranks the
     // -ExecutionPolicy switch, so the launcher must not use -File.
     var arguments = ElevationHelper.BuildLauncherArguments(
-        @"C:\example\script.ps1", @"C:\example\error.txt");
+        @"C:\example\script.ps1", @"C:\example\error.txt", new string('0', 64));
     Contains("-EncodedCommand", arguments);
     DoesNotContain("-File", arguments);
 
@@ -481,6 +486,100 @@ Run("Privileged scripts run under a Restricted execution policy", () =>
     {
         try { Directory.Delete(directory, recursive: true); } catch { }
     }
+});
+
+Run("Privileged launcher rejects replaced scripts and preserves existing error files", () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"whs-integrity-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    var scriptPath = Path.Combine(directory, "payload.ps1");
+    var markerPath = Path.Combine(directory, "marker.txt");
+    var errorPath = Path.Combine(directory, "error.txt");
+    try
+    {
+        File.WriteAllText(scriptPath, "exit 0");
+        var arguments = ElevationHelper.BuildLauncherArguments(
+            scriptPath, errorPath, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(scriptPath))));
+        // Simulate replacement while UAC is pending, without elevating.
+        File.WriteAllText(scriptPath,
+            "[System.IO.File]::WriteAllText('" + markerPath.Replace("'", "''") + "', 'unexpected')");
+        Equal(1, RunPowerShellArguments(arguments));
+        Equal(false, File.Exists(markerPath));
+        Contains("changed before execution", File.ReadAllText(errorPath));
+
+        // Elevated error reporting must not overwrite a planted file/link.
+        File.WriteAllText(errorPath, "must survive");
+        Equal(1, RunPowerShellArguments(arguments));
+        Equal("must survive", File.ReadAllText(errorPath));
+
+        // Legitimate non-ASCII scripts retain UTF-8 content.
+        File.WriteAllText(scriptPath,
+            "[System.IO.File]::WriteAllText('" + markerPath.Replace("'", "''") + "', 'İstanbul güvenlik')");
+        Equal(0, RunLauncher(scriptPath, errorPath));
+        Equal("İstanbul güvenlik", File.ReadAllText(markerPath));
+        Throws(() => ElevationHelper.BuildLauncherArguments(scriptPath, errorPath, "'; exit 0; '"));
+        Equal(true, Path.IsPathFullyQualified(ElevationHelper.PowerShellPath));
+        Equal(true, File.Exists(ElevationHelper.PowerShellPath));
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+});
+
+Run("Uninstall self-delete stays inline and treats metacharacters as a literal path", () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"whs-delete-'$&-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        File.WriteAllText(Path.Combine(directory, "inert.txt"), "smoke-test");
+        var arguments = Installer.BuildSelfDeleteArguments(directory);
+        Equal(0, RunPowerShellArguments(arguments));
+        Equal(false, Directory.Exists(directory));
+        Throws(() => Installer.BuildSelfDeleteArguments(Path.GetPathRoot(directory)!));
+    }
+    finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+});
+
+Run("DNS backup guards reject untrusted owners and write permissions", () =>
+{
+    // Exercise ACL validation in memory; no actual DNS state or system ACL
+    // is changed. Reader access remains valid for legacy trusted backups.
+    var script = PrivilegedStorage.DnsBackupPowerShell + """
+$acl = New-Object System.Security.AccessControl.DirectorySecurity
+$admin = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+$user = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')
+$acl.SetOwner($admin)
+$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($admin, 'FullControl', 'Allow')))
+$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($user, 'ReadAndExecute', 'Allow')))
+Assert-WhsBackupAcl -Acl $acl
+$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($user, 'Write', 'Allow')))
+$rejected = $false
+try { Assert-WhsBackupAcl -Acl $acl } catch { $rejected = $true }
+if (-not $rejected) { exit 2 }
+# The old administrator-owned ProgramData directory permits child creation
+# but cannot replace its separately validated read-only backup file.
+Assert-WhsBackupAcl -Acl $acl -AllowDirectoryCreate
+$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($user, 'DeleteSubdirectoriesAndFiles', 'Allow')))
+$rejected = $false
+try { Assert-WhsBackupAcl -Acl $acl -AllowDirectoryCreate } catch { $rejected = $true }
+if (-not $rejected) { exit 4 }
+$acl = New-Object System.Security.AccessControl.DirectorySecurity
+$acl.SetOwner($user)
+$rejected = $false
+try { Assert-WhsBackupAcl -Acl $acl } catch { $rejected = $true }
+if (-not $rejected) { exit 3 }
+exit 0
+""";
+    AssertPowerShellParses(script);
+    Equal(0, RunPowerShellArguments(ElevationHelper.BuildInlineArguments(script)));
+});
+
+Run("Published runtime disables startup hook and BinaryFormatter injection", () =>
+{
+    var runtimePath = Path.Combine(AppContext.BaseDirectory, "WhitehatSecurity.runtimeconfig.json");
+    using var runtime = JsonDocument.Parse(File.ReadAllText(runtimePath));
+    var properties = runtime.RootElement.GetProperty("runtimeOptions").GetProperty("configProperties");
+    Equal(false, properties.GetProperty("System.StartupHookProvider.IsSupported").GetBoolean());
+    Equal(false, properties.GetProperty("System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization").GetBoolean());
 });
 
 Run("Per-IP firewall rules are named after the address", () =>
@@ -646,6 +745,68 @@ Run("File inspection reports SHA-256 and quarantine is reversible", () =>
     {
         try { File.Delete(path); } catch { }
         try { Directory.Delete(directory); } catch { }
+    }
+});
+
+Run("Quarantine rejects altered contents and malformed manifests", () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"whs-quarantine-integrity-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    var path = Path.Combine(directory, "sample.bin");
+    QuarantineRecord? record = null;
+    try
+    {
+        File.WriteAllText(path, "original content");
+        var result = QuarantineManager.Quarantine(path);
+        Equal(true, result.Success);
+        record = result.Record!;
+        Equal(false, QuarantineManager.Restore(record with { Id = null! }).Success);
+        Equal(false, QuarantineManager.Restore(record with { OriginalPath = "relative.bin" }).Success);
+        Equal(false, QuarantineManager.Restore(record with { QuarantinePath = path }).Success);
+        Equal(false, QuarantineManager.Restore(record with { Sha256 = null! }).Success);
+        File.WriteAllText(record.QuarantinePath, "replacement content");
+        Equal(false, QuarantineManager.Restore(record).Success);
+        Equal(false, File.Exists(path));
+        Equal(true, File.Exists(record.QuarantinePath));
+        // The user can still permanently remove a changed quarantined file.
+        Equal(true, QuarantineManager.DeletePermanently(record).Success);
+    }
+    finally
+    {
+        if (record is not null) QuarantineManager.DeletePermanently(record);
+        Directory.Delete(directory, recursive: true);
+    }
+});
+
+Run("Quarantine does not follow junctions in an ancestor directory", () =>
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"whs-junction-{Guid.NewGuid():N}");
+    var target = Path.Combine(directory, "target");
+    var junction = Path.Combine(directory, "link");
+    Directory.CreateDirectory(target);
+    var path = Path.Combine(target, "sample.bin");
+    File.WriteAllText(path, "must remain in place");
+    try
+    {
+        Equal(0, RunPowerShellArguments(ElevationHelper.BuildInlineArguments(
+            "New-Item -ItemType Junction -Path '" + junction.Replace("'", "''")
+            + "' -Target '" + target.Replace("'", "''") + "' -ErrorAction Stop | Out-Null")));
+        var alias = Path.Combine(junction, "sample.bin");
+        Equal(true, ThreatPath.ContainsReparsePoint(alias));
+        Equal(false, QuarantineManager.Quarantine(alias).Success);
+        Equal("must remain in place", File.ReadAllText(path));
+        File.Delete(path);
+        Directory.Delete(target);
+        Equal(0, RunPowerShellArguments(ElevationHelper.BuildInlineArguments(
+            PrivilegedStorage.DnsBackupPowerShell
+            + "if (-not (Test-WhsPathEntry -Path '" + junction.Replace("'", "''") + "')) { exit 2 }\r\n"
+            + "$rejected = $false; try { Assert-WhsBackupPath -Path '" + junction.Replace("'", "''")
+            + "' } catch { $rejected = $true }; if (-not $rejected) { exit 3 }")));
+    }
+    finally
+    {
+        try { Directory.Delete(junction); } catch (DirectoryNotFoundException) { }
+        Directory.Delete(directory, recursive: true);
     }
 });
 
@@ -1311,15 +1472,19 @@ static void AssertPowerShellParses(string script)
 static int RunLauncher(string scriptPath, string errorPath)
 {
     try { File.Delete(errorPath); } catch { }
+    return RunPowerShellArguments(ElevationHelper.BuildLauncherArguments(
+        scriptPath, errorPath, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(scriptPath)))));
+}
+
+static int RunPowerShellArguments(string arguments)
+{
     var startInfo = new ProcessStartInfo
     {
-        FileName = "powershell.exe",
+        FileName = ElevationHelper.PowerShellPath,
         UseShellExecute = false,
         CreateNoWindow = true,
     };
-    foreach (var argument in ElevationHelper
-                 .BuildLauncherArguments(scriptPath, errorPath)
-                 .Split(' ', StringSplitOptions.RemoveEmptyEntries))
+    foreach (var argument in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         startInfo.ArgumentList.Add(argument);
 
     using var process = Process.Start(startInfo)

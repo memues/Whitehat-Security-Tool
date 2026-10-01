@@ -262,10 +262,10 @@ internal static class Program
     {
         try
         {
-            // Logger writes to %TEMP% during install since we don't yet have
-            // a definitive data dir.
-            var logger = new Logger(Path.GetTempPath());
-            Installer.InstallElevated(logger);
+            // Do not append privileged diagnostics to predictable files in
+            // user temp: a planted link could redirect the write. Failures
+            // still reach the installer dialog and process exit code.
+            Installer.InstallElevated();
             if (!quiet)
                 MessageBox.Show(
                     $"Installed to:\n{Installer.DefaultInstallDir}\n\n" +
@@ -288,8 +288,7 @@ internal static class Program
     {
         try
         {
-            var logger = new Logger(Path.GetTempPath());
-            Installer.UninstallElevated(logger);
+            Installer.UninstallElevated();
             if (!quiet)
                 MessageBox.Show(
                     $"{Installer.ProductName} has been removed.",

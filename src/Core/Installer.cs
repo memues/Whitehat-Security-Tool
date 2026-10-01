@@ -9,9 +9,8 @@
 // Desktop link:     %PUBLIC%\Desktop\Whitehat Security.lnk
 //
 // All file copies and registry writes happen elevated. Self-deletion of the
-// installed binary during uninstall uses the classic "spawn cmd that waits
-// then deletes the file" trick because Windows will not let a running .exe
-// remove itself.
+// installed binary during uninstall uses an inline, encoded Windows
+// PowerShell command because Windows will not remove a running .exe.
 
 using System;
 using System.Diagnostics;
@@ -487,32 +486,34 @@ public static class Installer
             return;
         }
 
-        // We ARE the installed exe. We can't delete ourselves, so spawn a
-        // detached cmd.exe that waits 2 seconds then deletes the install dir
-        // and itself.
-        var batPath = Path.Combine(Path.GetTempPath(), $"whs_uninst_{Guid.NewGuid():N}.bat");
-        File.WriteAllText(batPath, BuildSelfDeleteBatch(installDir, batPath));
+        // Keep the delayed command in the child process arguments. A batch
+        // file in user temp could be replaced while waiting for us to exit.
         logger?.Info("Scheduled self-delete; exiting");
 
         var psi = new ProcessStartInfo
         {
-            FileName        = "cmd.exe",
-            Arguments       = $"/c \"{batPath}\"",
+            FileName        = ElevationHelper.PowerShellPath,
+            Arguments       = BuildSelfDeleteArguments(installDir),
             UseShellExecute = false,
             CreateNoWindow  = true,
             WindowStyle     = ProcessWindowStyle.Hidden,
         };
         Process.Start(psi);
         // The caller (Program.Main) returns immediately after this and the
-        // process exits, freeing the file lock so the batch can delete us.
+        // process exits, freeing the file lock so the helper can delete us.
     }
 
-    private static string BuildSelfDeleteBatch(string installDir, string batPath) => $@"
-@echo off
-ping 127.0.0.1 -n 3 > nul
-rmdir /s /q ""{installDir}""
-del ""{batPath}""
-";
+    public static string BuildSelfDeleteArguments(string installDir)
+    {
+        var fullPath = Path.GetFullPath(installDir);
+        if (string.Equals(fullPath.TrimEnd('\\', '/'),
+                Path.GetPathRoot(fullPath)?.TrimEnd('\\', '/'),
+                StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Cannot remove a drive root.", nameof(installDir));
+        return ElevationHelper.BuildInlineArguments(
+            "Start-Sleep -Seconds 2\r\n" +
+            "[System.IO.Directory]::Delete('" + fullPath.Replace("'", "''") + "', $true)\r\n");
+    }
 
     private static void TryDelete(string path, Logger? logger)
     {

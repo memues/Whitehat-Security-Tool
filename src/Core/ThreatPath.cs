@@ -80,6 +80,28 @@ public static partial class ThreatPath
                 StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Do not perform remediation through links or junctions.</summary>
+    public static bool ContainsReparsePoint(string path)
+    {
+        try
+        {
+            var current = Path.GetFullPath(path);
+            while (!string.IsNullOrEmpty(current))
+            {
+                try
+                {
+                    if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                        return true;
+                }
+                catch (FileNotFoundException) { }
+                catch (DirectoryNotFoundException) { }
+                current = Path.GetDirectoryName(current);
+            }
+            return false;
+        }
+        catch { return true; }
+    }
+
     private static bool IsUnder(string path, string directory)
     {
         if (string.IsNullOrWhiteSpace(directory)) return false;

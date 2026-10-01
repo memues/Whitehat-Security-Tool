@@ -1,0 +1,25 @@
+name: Build and security checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore and reject known vulnerable packages
+        run: dotnet restore tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -warnaserror:NU1901,NU1902,NU1903,NU1904
+      - name: Run smoke and security regression tests
+        run: dotnet run --project tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -c Release --no-restore

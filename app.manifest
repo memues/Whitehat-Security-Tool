@@ -4,7 +4,7 @@
        test "Version metadata agrees across the project" fails the build if
        these drift apart, which is how this identity was left at 7.4.0.0
        for three releases. -->
-  <assemblyIdentity version="7.4.17.0" name="WhitehatSecurity" />
+  <assemblyIdentity version="7.4.18.0" name="WhitehatSecurity" />
 
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>

@@ -524,9 +524,37 @@ Run("Privileged launcher rejects replaced scripts and preserves existing error f
     finally { Directory.Delete(directory, recursive: true); }
 });
 
+Run("Privileged launcher preserves Unicode path characters and error reports", () =>
+{
+    foreach (var quote in new[] { '\u2018', '\u2019', '\u201a', '\u201b' })
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"whs-unicode-{quote}-'$& İstanbul-\U0001f512-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var scriptPath = Path.Combine(directory, "script.ps1");
+        var errorPath = Path.Combine(directory, "error.txt");
+        try
+        {
+            File.WriteAllText(scriptPath, "exit 6\r\n");
+            Equal(6, RunLauncher(scriptPath, errorPath));
+            Equal(false, File.Exists(errorPath));
+
+            File.WriteAllText(scriptPath, "throw 'expected Unicode path failure'\r\n");
+            Equal(1, RunLauncher(scriptPath, errorPath));
+            Contains("expected Unicode path failure", File.ReadAllText(errorPath));
+
+            File.WriteAllText(errorPath, "existing Unicode path report");
+            var arguments = ElevationHelper.BuildLauncherArguments(
+                scriptPath, errorPath, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(scriptPath))));
+            Equal(1, RunPowerShellArguments(arguments));
+            Equal("existing Unicode path report", File.ReadAllText(errorPath));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+});
+
 Run("Uninstall self-delete stays inline and treats metacharacters as a literal path", () =>
 {
-    var directory = Path.Combine(Path.GetTempPath(), $"whs-delete-'$&-{Guid.NewGuid():N}");
+    var directory = Path.Combine(Path.GetTempPath(), $"whs-delete-'$&-\u2018\u2019\u201a\u201b İstanbul-\U0001f512-{Guid.NewGuid():N}");
     Directory.CreateDirectory(directory);
     try
     {

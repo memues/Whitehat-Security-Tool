@@ -175,14 +175,14 @@ public static class DnsConfiguration
                 providerName,
                 AutomaticProviderName,
                 StringComparison.OrdinalIgnoreCase))
-            return CommonPowerShell + ResetPowerShell;
+            return PrivilegedStorage.DnsBackupPowerShell + CommonPowerShell + ResetPowerShell;
         if (!TryGetProvider(providerName, out var provider)
             || provider is null)
             throw new ArgumentOutOfRangeException(
                 nameof(providerName), providerName,
                 "Unknown DNS provider.");
 
-        return CommonPowerShell
+        return PrivilegedStorage.DnsBackupPowerShell + CommonPowerShell
             + ApplyProviderPowerShell
                 .Replace("__PRIMARY6__", provider.PrimaryIpv6)
                 .Replace("__SECONDARY6__", provider.SecondaryIpv6)
@@ -479,18 +479,20 @@ function Assert-WhsDnsAutomatic {
     private const string ApplyProviderPowerShell = """
 $targets = @(Get-WhsDnsTargetIndices)
 $beforeApply = @(Get-WhsDnsSnapshot -InterfaceIndices $targets)
-$backup = Join-Path $env:ProgramData `
-    'Whitehat Security\dns-backup.json'
+$backup = Get-WhsDnsBackupPath -Create
 $createdBackup = $false
 try {
     if (-not (Test-Path -LiteralPath $backup)) {
-        $directory = Split-Path $backup -Parent
-        New-Item -ItemType Directory -Path $directory `
-            -Force -ErrorAction Stop | Out-Null
         @($beforeApply) | ConvertTo-Json -Depth 4 |
             Set-Content -LiteralPath $backup -Encoding UTF8 `
                 -ErrorAction Stop
         $createdBackup = $true
+        # Token default ownership can be the individual admin account.
+        # Keep ownership at the administrator boundary as well as the ACL.
+        $backupAcl = Get-Acl -LiteralPath $backup -ErrorAction Stop
+        $backupAcl.SetOwner((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+        Set-Acl -LiteralPath $backup -AclObject $backupAcl -ErrorAction Stop
+        Assert-WhsBackupPath -Path $backup
     }
     $v6Targets = @(Get-WhsDnsIpv6Targets -InterfaceIndices $targets)
     foreach ($index in $targets) {
@@ -534,8 +536,7 @@ try {
     private const string ResetPowerShell = """
 $targets = @(Get-WhsDnsTargetIndices)
 $beforeReset = @(Get-WhsDnsSnapshot -InterfaceIndices $targets)
-$backup = Join-Path $env:ProgramData `
-    'Whitehat Security\dns-backup.json'
+$backup = Get-WhsDnsBackupPath
 try {
     if (Test-Path -LiteralPath $backup) {
         $saved = @(Get-Content -LiteralPath $backup -Raw `

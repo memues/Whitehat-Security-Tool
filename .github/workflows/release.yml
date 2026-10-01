@@ -6,30 +6,44 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-release:
+    permissions:
+      contents: write
     runs-on: windows-latest
     timeout-minutes: 30
 
     steps:
       - name: Check out tagged source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: "8.0.x"
 
+      - name: Verify tag matches application version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content WhitehatSecurity.csproj
+          $version = [version]($project.Project.PropertyGroup.Version | Where-Object { $_ })
+          $expected = "v$($version.Major).$($version.Minor).$($version.Build)"
+          if ($env:GITHUB_REF_NAME -ne $expected) {
+            throw "Release tag must match application version $expected"
+          }
+
       - name: Restore
-        run: dotnet restore WhitehatSecurity.csproj -r win-x64
+        run: dotnet restore tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -p:Configuration=Release -r win-x64 -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -warnaserror:NU1901,NU1902,NU1903,NU1904
 
       - name: Run smoke tests
-        run: dotnet run --project tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -c Release
+        run: dotnet run --project tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -c Release --no-restore
 
       - name: Publish self-contained Windows executable
-        run: dotnet publish WhitehatSecurity.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish
+        run: dotnet publish WhitehatSecurity.csproj -c Release -r win-x64 --self-contained true --no-restore -o artifacts/publish
 
       - name: Prepare release assets
         shell: pwsh

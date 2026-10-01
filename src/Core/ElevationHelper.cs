@@ -13,11 +13,19 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace WhitehatSecurity.Core;
 
 public static class ElevationHelper
 {
+    // Resolve the Windows binary without searching the current directory,
+    // application directory or the caller-controlled PATH.
+    public static string PowerShellPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.System),
+        "WindowsPowerShell", "v1.0", "powershell.exe");
+
     /// <summary>
     /// Re-launches this signed application with a narrowly-scoped internal
     /// command. Payloads used by remediation commands are Base64 and command
@@ -79,7 +87,10 @@ public static class ElevationHelper
                 DnsConfiguration.ManagedDohAddresses,
                 a => "'" + a + "'"));
 
-        return @"
+        return PrivilegedStorage.DnsBackupPowerShell + @"
+$backup = Get-WhsDnsBackupPath
+$dataDir = Split-Path $backup -Parent
+
 Get-NetFirewallRule -ErrorAction SilentlyContinue |
     Where-Object DisplayName -like 'WHS_*' |
     Remove-NetFirewallRule -ErrorAction Stop
@@ -92,8 +103,6 @@ if (Test-Path $hosts) {
     [System.IO.File]::WriteAllText($hosts, $content)
 }
 
-$dataDir = Join-Path $env:ProgramData 'Whitehat Security'
-$backup = Join-Path $dataDir 'dns-backup.json'
 if (Test-Path $backup) {
     $saved = @(Get-Content $backup -Raw | ConvertFrom-Json)
     foreach ($adapter in $saved) {
@@ -156,30 +165,58 @@ if (Test-Path $backup) {
     /// </summary>
     public static string BuildLauncherArguments(
         string scriptPath,
-        string? errorPath)
+        string? errorPath,
+        string expectedSha256)
     {
+        if (expectedSha256 is null || expectedSha256.Length != 64
+            || !expectedSha256.All(Uri.IsHexDigit))
+            throw new ArgumentException("A SHA-256 script digest is required.", nameof(expectedSha256));
         var quotedScript = scriptPath.Replace("'", "''");
         var bootstrap =
             "$ErrorActionPreference = 'Stop'\r\n" +
             "try {\r\n" +
-            "    $text = Get-Content -LiteralPath '" + quotedScript +
-            "' -Raw\r\n" +
+            // Verify and execute the SAME snapshot: a user can change files
+            // in their temp directory while the administrator considers UAC.
+            "    $bytes = [System.IO.File]::ReadAllBytes('" + quotedScript + "')\r\n" +
+            "    $sha = [System.Security.Cryptography.SHA256]::Create()\r\n" +
+            "    try { $actual = [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '') } finally { $sha.Dispose() }\r\n" +
+            "    if ($actual -ne '" + expectedSha256 + "') { throw 'The privileged script changed before execution.' }\r\n" +
+            "    $text = [System.Text.Encoding]::UTF8.GetString($bytes)\r\n" +
             "    & ([scriptblock]::Create($text))\r\n" +
             "} catch {\r\n";
         if (errorPath is not null)
         {
             var quotedError = errorPath.Replace("'", "''");
             bootstrap +=
-                "    ($_ | Out-String) | Set-Content -LiteralPath '" +
-                quotedError + "' -Encoding UTF8\r\n";
+                // CreateNew refuses existing files and links; an error
+                // report must never overwrite an attacker-selected target.
+                "    $detail = $_ | Out-String\r\n" +
+                "    try {\r\n" +
+                "        $stream = [System.IO.File]::Open('" + quotedError + "', [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)\r\n" +
+                "        try { $data = [System.Text.Encoding]::UTF8.GetBytes($detail); $stream.Write($data, 0, $data.Length) } finally { $stream.Dispose() }\r\n" +
+                "    } catch { }\r\n";
         }
         bootstrap +=
             "    exit 1\r\n" +
             "}\r\n";
 
-        var encoded = Convert.ToBase64String(
-            System.Text.Encoding.Unicode.GetBytes(bootstrap));
-        return $"-NoProfile -NonInteractive -EncodedCommand {encoded}";
+        return BuildInlineArguments(bootstrap);
+    }
+
+    public static string BuildInlineArguments(string script)
+        => "-NoProfile -NonInteractive -EncodedCommand "
+            + Convert.ToBase64String(Encoding.Unicode.GetBytes(
+                // System cmdlets must not be autoloaded from user modules.
+                "$env:PSModulePath = [System.IO.Path]::Combine($PSHOME, 'Modules')\r\n"
+                + "$env:SystemRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)\r\n"
+                + script));
+
+    private static string WriteScript(string path, string script)
+    {
+        var bytes = Encoding.UTF8.GetBytes(script);
+        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        stream.Write(bytes);
+        return Convert.ToHexString(SHA256.HashData(bytes));
     }
 
     private static int RunDirect(string script, Logger? logger)
@@ -188,11 +225,11 @@ if (Test-Path $backup) {
             Path.GetTempPath(), $"whs_cleanup_{Guid.NewGuid():N}.ps1");
         try
         {
-            File.WriteAllText(tmpFile, script);
+            var digest = WriteScript(tmpFile, script);
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = "powershell.exe",
-                Arguments = BuildLauncherArguments(tmpFile, null),
+                FileName = PowerShellPath,
+                Arguments = BuildLauncherArguments(tmpFile, null, digest),
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
@@ -231,12 +268,12 @@ if (Test-Path $backup) {
 
         try
         {
-            File.WriteAllText(tmpFile, script);
+            var digest = WriteScript(tmpFile, script);
 
             var psi = new ProcessStartInfo
             {
-                FileName        = "powershell.exe",
-                Arguments       = BuildLauncherArguments(tmpFile, errorFile),
+                FileName        = PowerShellPath,
+                Arguments       = BuildLauncherArguments(tmpFile, errorFile, digest),
                 Verb            = "runas",   // triggers UAC
                 UseShellExecute = true,      // mandatory for Verb=runas
                 WindowStyle     = ProcessWindowStyle.Hidden,

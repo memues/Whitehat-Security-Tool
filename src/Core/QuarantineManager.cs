@@ -41,6 +41,9 @@ public static class QuarantineManager
             return new QuarantineResult(
                 false,
                 "System and application files cannot be moved. Disable the associated driver or service instead.");
+        if (ThreatPath.ContainsReparsePoint(path)
+            || ThreatPath.ContainsReparsePoint(Paths.QuarantineDir))
+            return new QuarantineResult(false, "Quarantine paths must not pass through links or junctions.");
 
         try
         {
@@ -95,6 +98,9 @@ public static class QuarantineManager
 
         try
         {
+            if (!string.Equals(ComputeSha256(record.QuarantinePath), record.Sha256,
+                    StringComparison.OrdinalIgnoreCase))
+                return new QuarantineResult(false, "The quarantined file changed. Restore was cancelled.");
             var directory = Path.GetDirectoryName(record.OriginalPath);
             if (string.IsNullOrWhiteSpace(directory))
                 return new QuarantineResult(false, "The original directory is invalid.");
@@ -167,7 +173,7 @@ public static class QuarantineManager
         QuarantineRecord record, out string error)
     {
         error = "";
-        if (record.Id.Length != 32
+        if (string.IsNullOrEmpty(record.Id) || record.Id.Length != 32
             || !record.Id.All(Uri.IsHexDigit))
         {
             error = "The quarantine record ID is invalid.";
@@ -183,6 +189,16 @@ public static class QuarantineManager
                     StringComparison.OrdinalIgnoreCase))
             {
                 error = "The quarantine record path failed validation.";
+                return false;
+            }
+            if (!Path.IsPathFullyQualified(record.OriginalPath)
+                || string.IsNullOrEmpty(record.Sha256) || record.Sha256.Length != 64
+                || !record.Sha256.All(Uri.IsHexDigit)
+                || ThreatPath.ContainsReparsePoint(record.QuarantinePath)
+                || ThreatPath.ContainsReparsePoint(record.OriginalPath)
+                || ThreatPath.ContainsReparsePoint(ManifestPath(record.Id)))
+            {
+                error = "The quarantine record contains an unsafe path or invalid hash.";
                 return false;
             }
             if (ThreatPath.IsProtectedSystemPath(record.OriginalPath))

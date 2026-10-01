@@ -842,7 +842,7 @@ public sealed partial class DashboardForm : Form
         try
         {
             Process.Start(new ProcessStartInfo(
-                "explorer.exe", $"/select,\"{p}\"")
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), $"/select,\"{p}\"")
             {
                 UseShellExecute = true,
             });
@@ -873,7 +873,7 @@ public sealed partial class DashboardForm : Form
                     Environment.GetFolderPath(
                         Environment.SpecialFolder.Windows),
                     "SysWOW64", "regedit.exe")
-                : "regedit.exe";
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "regedit.exe");
             Process.Start(new ProcessStartInfo(executable)
             {
                 Arguments = "-m",
@@ -1994,7 +1994,7 @@ public sealed partial class DashboardForm : Form
         try
         {
             if (File.Exists(path))
-                Process.Start(new ProcessStartInfo("notepad.exe", '"' + path + '"') { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "notepad.exe"), '"' + path + '"') { UseShellExecute = true });
             else
                 MessageBox.Show($"Not yet created:\n{path}", "Logs", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }

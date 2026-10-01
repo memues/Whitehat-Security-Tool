@@ -4,6 +4,28 @@ Whitehat Security is a local Windows monitoring and remediation tool. Its
 security review reduces identified risks; it does not certify the application
 or its dependencies as free of vulnerabilities.
 
+## Unicode path correction in 7.4.18
+
+The follow-up review corrected the earlier false-positive assessment of
+CodeQL alerts #125 and #127. PowerShell treats several Unicode apostrophes as
+string delimiters. Escaping only the ASCII apostrophe did not safely encode
+temporary script/error paths: a crafted path could introduce expressions into
+the launcher before its intended script digest was checked. A harmless,
+unelevated regression reproduced command interpretation with U+2018, U+2019,
+U+201A and U+201B.
+
+Version 7.4.18 transports each path as Base64-encoded Unicode data decoded by
+a fixed expression. Path characters no longer become PowerShell syntax. The
+same handling is used for inline uninstall cleanup. Script integrity checks,
+error-file exclusive creation, command exit codes and normal filesystem paths
+retain their behavior. This change does not add/remove product features.
+
+The earlier scan's green status reflected alert triage, not proof that every
+injection path was absent. The affected alerts were reopened for this fix;
+unrelated OS-known-folder and isolated test-fixture findings remain separate.
+PowerShell's [documented quoting rules](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_quoting_rules)
+include the Unicode delimiter behavior.
+
 ## October 2026 hardening
 
 Version 7.4.17 keeps the monitoring engines, dashboard, firewall controls,
@@ -47,7 +69,8 @@ establish that previously writable contents are trustworthy.
 
 ## Validation and limits
 
-The release changes pass 37 Windows smoke tests, including harmless script
+The 7.4.18 changes pass 38 Windows smoke tests, including Unicode paths,
+error-report preservation, harmless script
 replacement, protected error output, literal uninstall paths, ACL validation,
 quarantine tampering, real junction/dangling-junction rejection, existing
 monitoring behavior and dashboard layout. Release compilation with warnings

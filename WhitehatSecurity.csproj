@@ -10,7 +10,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <RootNamespace>WhitehatSecurity</RootNamespace>
     <AssemblyName>WhitehatSecurity</AssemblyName>
-    <Version>7.4.17.0</Version>
+    <Version>7.4.18.0</Version>
     <Company>Whitehat Security</Company>
     <Product>Whitehat Security Tool</Product>
     <Description>Real-time Windows security monitoring tool — C# port</Description>

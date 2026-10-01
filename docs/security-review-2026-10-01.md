@@ -1,5 +1,23 @@
 # Whitehat CodeQL baseline triage and remediation record
 
+> Follow-up correction (7.4.18): the initial PR classification was too broad.
+> Alerts #125 and #127 were reopened after harmless tests demonstrated that
+> PowerShell Unicode apostrophes escape the ASCII-only path quoting in 7.4.17.
+> The fixed launcher and uninstall helper encode paths as Unicode data instead
+> of interpolating them as quoted source. See SECURITY.md for the correction.
+> The historical baseline assessment below must not be read as a guarantee
+> that every subsequent PR finding was a false positive.
+
+The 7.4.18 regression was verified before and after the repair: benign Unicode
+directory names failed script launch and disposable-directory cleanup on the
+old code, then passed with path-data encoding. All 38 Windows smoke tests pass
+on the patch with .NET 8.0.31, along with a zero-warning warnings-as-errors
+Release build and a direct/transitive NuGet advisory audit. An independent
+review confirmed all three path sites use the fixed expression and preserve
+hash verification, exclusive error creation, exit codes and the root-delete
+guard. These tests were unelevated and did not change actual network settings
+or the installed application.
+
 Reviewed 2026-10-01. This is a triage of the existing default-branch scan, not a claim that the final release scan is clean. No alert was dismissed or hidden.
 
 - Repository: memues/Whitehat-Security-Tool
@@ -11,7 +29,7 @@ Reviewed 2026-10-01. This is a triage of the existing default-branch scan, not a
 
 ## Substantiated security defects requiring fixes
 
-1. **Mutable scripts across elevation**: #85/#86 identify command lines containing temp script paths. The base64 bootstrap and quoted path themselves do not admit command-line syntax injection, but the baseline rereads and executes a user-writable script after UAC approval. This is a genuine boundary defect. The owning agent is pinning a hash of the intended script into the immutable launcher and executing the exact byte snapshot verified, and using trusted absolute PowerShell paths.
+1. **Mutable scripts across elevation**: #85/#86 identify command lines containing temp script paths. The baseline rereads and executes a user-writable script after UAC approval. This is a genuine boundary defect. The owning agent is pinning a hash of the intended script into the immutable launcher and executing the exact byte snapshot verified, and using trusted absolute PowerShell paths. **Correction in 7.4.18:** the original assertion that quoted paths could not introduce command syntax was incorrect; outer Base64 does not sanitize interpolated PowerShell source. Each path now uses an independently encoded data expression.
 2. **Mutable self-delete batch**: #28/#87 cover an elevated uninstaller writing and executing a per-user temp batch, then waiting before deleting. Replacing this with an in-memory encoded command avoids both script replacement and cmd metacharacter expansion. The owner is fixing it.
 3. **Privileged log append**: #5/#12 contain real product flows from Program.RunInstall/RunUninstall to Logger(Path.GetTempPath()). Logger appends to predictable monitor_yyyy-MM-dd.log. A same-user attacker can preplant a link at that path to redirect the privileged append. These alerts also contain test sources; the product sources must not be dismissed with the test cases. The owner was notified to avoid privileged logging to user-writable temp.
 4. **Privileged error output**: although the visible C# #20/#21 are only unprivileged reads, the generated baseline PowerShell writes error detail with Set-Content to a writable-temp pathname, permitting a planted existing link to redirect the elevated write. The owner changed this to exclusive creation; final review must confirm ancestor protection/appropriate scope.

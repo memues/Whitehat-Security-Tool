@@ -512,7 +512,7 @@ public static class Installer
             throw new ArgumentException("Cannot remove a drive root.", nameof(installDir));
         return ElevationHelper.BuildInlineArguments(
             "Start-Sleep -Seconds 2\r\n" +
-            "[System.IO.Directory]::Delete('" + fullPath.Replace("'", "''") + "', $true)\r\n");
+            "[System.IO.Directory]::Delete(" + ElevationHelper.BuildPathExpression(fullPath) + ", $true)\r\n");
     }
 
     private static void TryDelete(string path, Logger? logger)

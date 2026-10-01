@@ -171,13 +171,12 @@ if (Test-Path $backup) {
         if (expectedSha256 is null || expectedSha256.Length != 64
             || !expectedSha256.All(Uri.IsHexDigit))
             throw new ArgumentException("A SHA-256 script digest is required.", nameof(expectedSha256));
-        var quotedScript = scriptPath.Replace("'", "''");
         var bootstrap =
             "$ErrorActionPreference = 'Stop'\r\n" +
             "try {\r\n" +
             // Verify and execute the SAME snapshot: a user can change files
             // in their temp directory while the administrator considers UAC.
-            "    $bytes = [System.IO.File]::ReadAllBytes('" + quotedScript + "')\r\n" +
+            "    $bytes = [System.IO.File]::ReadAllBytes(" + BuildPathExpression(scriptPath) + ")\r\n" +
             "    $sha = [System.Security.Cryptography.SHA256]::Create()\r\n" +
             "    try { $actual = [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '') } finally { $sha.Dispose() }\r\n" +
             "    if ($actual -ne '" + expectedSha256 + "') { throw 'The privileged script changed before execution.' }\r\n" +
@@ -186,13 +185,12 @@ if (Test-Path $backup) {
             "} catch {\r\n";
         if (errorPath is not null)
         {
-            var quotedError = errorPath.Replace("'", "''");
             bootstrap +=
                 // CreateNew refuses existing files and links; an error
                 // report must never overwrite an attacker-selected target.
                 "    $detail = $_ | Out-String\r\n" +
                 "    try {\r\n" +
-                "        $stream = [System.IO.File]::Open('" + quotedError + "', [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)\r\n" +
+                "        $stream = [System.IO.File]::Open(" + BuildPathExpression(errorPath) + ", [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)\r\n" +
                 "        try { $data = [System.Text.Encoding]::UTF8.GetBytes($detail); $stream.Write($data, 0, $data.Length) } finally { $stream.Dispose() }\r\n" +
                 "    } catch { }\r\n";
         }
@@ -202,6 +200,12 @@ if (Test-Path $backup) {
 
         return BuildInlineArguments(bootstrap);
     }
+
+    // Encode each path as data before constructing PowerShell source. Escaping
+    // ASCII apostrophes alone misses PowerShell's Unicode quote delimiters.
+    public static string BuildPathExpression(string path)
+        => "[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('"
+            + Convert.ToBase64String(Encoding.Unicode.GetBytes(path)) + "'))";
 
     public static string BuildInlineArguments(string script)
         => "-NoProfile -NonInteractive -EncodedCommand "

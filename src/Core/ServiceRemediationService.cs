@@ -66,7 +66,25 @@ public static class ServiceRemediationService
             "RpcSs", "DcomLaunch", "PlugPlay", "Power", "EventLog",
             "Winmgmt", "SamSs", "LSM", "ProfSvc", "Schedule", "CryptSvc",
             "Dhcp", "Dnscache", "nsi", "BFE", "mpssvc",
+            "WinDefend", "WdNisSvc", "SecurityHealthService", "wscsvc",
+            "Sense", "SgrmBroker", "AppIDSvc", "TrustedInstaller", "wuauserv",
         };
+
+    // Earlier versions allowed deactivating these services. Keep a narrow
+    // recovery path for their saved journals without allowing a restore
+    // payload to disable a platform protection service.
+    private static readonly HashSet<string> ReenableOnlyServices =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "WinDefend", "WdNisSvc", "SecurityHealthService", "wscsvc",
+            "Sense", "SgrmBroker", "AppIDSvc", "TrustedInstaller", "wuauserv",
+        };
+
+    public static bool IsRestoreAllowed(string serviceName, int startMode)
+        => ServiceStatePayload.IsValidServiceName(serviceName)
+            && startMode is >= 0 and <= 4
+            && (!ProtectedServices.Contains(serviceName)
+                || (ReenableOnlyServices.Contains(serviceName) && startMode != 4));
 
     public static string Inspect(string serviceName)
     {
@@ -175,7 +193,7 @@ public static class ServiceRemediationService
     {
         if (!ServiceStatePayload.TryDecode(encoded, out var payload))
             return ExitInvalidPayload;
-        if (ProtectedServices.Contains(payload!.ServiceName))
+        if (!IsRestoreAllowed(payload!.ServiceName, payload.StartMode))
             return ExitProtectedService;
         if (!ServiceExists(payload!.ServiceName))
             return ExitMissingService;

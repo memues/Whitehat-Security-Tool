@@ -87,7 +87,7 @@ public static class ElevationHelper
                 DnsConfiguration.ManagedDohAddresses,
                 a => "'" + a + "'"));
 
-        return PrivilegedStorage.DnsBackupPowerShell + @"
+        return PrivilegedStorage.DnsBackupPowerShell + DnsConfiguration.CommonPowerShell + @"
 $backup = Get-WhsDnsBackupPath
 $dataDir = Split-Path $backup -Parent
 
@@ -105,31 +105,17 @@ if (Test-Path $hosts) {
 
 if (Test-Path $backup) {
     $saved = @(Get-Content $backup -Raw | ConvertFrom-Json)
+    Restore-WhsDnsSnapshot -Snapshot $saved
+" +
+#if !STORE_BUILD
+@"
     foreach ($adapter in $saved) {
-        # Per-interface DNS-over-HTTPS lives outside the DNS client cmdlets
-        # and survives a plain DNS reset, so an uninstall used to leave the
-        # adapter pinned to encrypted DNS for resolvers nobody sets anymore.
         $nic = Get-NetAdapter -InterfaceIndex ([int]$adapter.InterfaceIndex) -ErrorAction SilentlyContinue
         if ($null -ne $nic) {
             $dohKey = 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\' + $nic.InterfaceGuid + '\DohInterfaceSettings'
             if (Test-Path -LiteralPath $dohKey) {
                 Remove-Item -LiteralPath $dohKey -Recurse -Force -ErrorAction SilentlyContinue
             }
-        }
-        # 'Automatic' records whether the adapter had NO statically
-        # configured name server before we touched it. Deciding from
-        # ServerAddresses instead pinned the DHCP-supplied resolvers as a
-        # static configuration, so uninstalling silently froze the machine
-        # onto whatever DNS the router happened to hand out that day.
-        if ([bool]$adapter.Automatic) {
-            Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ResetServerAddresses
-            continue
-        }
-        $addresses = @($adapter.ServerAddresses)
-        if ($addresses.Count -gt 0) {
-            Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $addresses
-        } else {
-            Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ResetServerAddresses
         }
     }
     if (Get-Command Remove-DnsClientDohServerAddress -ErrorAction SilentlyContinue) {
@@ -140,7 +126,10 @@ if (Test-Path $backup) {
                 Remove-DnsClientDohServerAddress -Confirm:$false -ErrorAction SilentlyContinue
         }
     }
-    Remove-Item $dataDir -Recurse -Force
+" +
+#endif
+@"
+    Remove-Item -LiteralPath $backup -Force -ErrorAction Stop
 }";
     }
 
@@ -344,6 +333,9 @@ if (Test-Path $backup) {
 
     public static int SetFirewallProfile(string profile, bool enabled, Logger? logger = null)
     {
+#if STORE_BUILD
+        if (!enabled) return -5;
+#endif
         // Validate `profile` against an allowlist before interpolating it
         // into the elevated PowerShell snippet. The current UI only ever
         // passes one of these three strings, but defense in depth: every
@@ -598,6 +590,10 @@ if (Test-Path $hosts) {{
     /// </summary>
     public static int SetDnsOverHttps(bool enabled, string provider, Logger? logger = null)
     {
+#if STORE_BUILD
+        // Per-interface DoH registry writes are not a supported settings API.
+        return -5;
+#else
         if (!DnsConfiguration.TryGetProvider(provider, out var definition)
             || definition?.DohTemplate is null)
             return enabled ? -5 : 0;
@@ -612,6 +608,7 @@ if (Test-Path $hosts) {{
         {
             return -5;
         }
+#endif
     }
 
     public static int SetDnsProvider(string providerName, Logger? logger = null)

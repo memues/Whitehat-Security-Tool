@@ -2,6 +2,12 @@
 
 A real-time Windows security monitoring tool written in C# / .NET 8 / WinForms. Compiles to a single self-contained `.exe`.
 
+Read the [privacy policy](PRIVACY.md), also available offline from the tray menu.
+For the separate Microsoft Store build, signing prerequisites, and validation,
+see [Store submission](docs/store-submission.md). An ordinary GitHub build is
+not a signed Store candidate. The Store build leaves DNS encryption to Windows
+Settings and cannot disable Windows Firewall profiles.
+
 ## Screenshots
 
 ### Live Monitoring Status
@@ -16,11 +22,11 @@ Every finding with severity, category and message, searchable and filterable, ex
 
 ![Alert history page with the response action buttons](docs/screenshots/alerts.png)
 
-### AI Threat Detection
+### Behavioural Scan
 
-On-demand scan across the three behavioural engines: hidden processes, executable private (RWX) memory, and loaded drivers matching known bring-your-own-vulnerable-driver names.
+On-demand heuristic scan across three behavioural engines: hidden processes, executable private (RWX) memory, and loaded drivers matching known bring-your-own-vulnerable-driver names. This does not use a machine-learning model and findings require investigation.
 
-![AI threat detection page](docs/screenshots/ai-threats.png)
+![Behavioural scan page from an earlier release, before its label was corrected](docs/screenshots/ai-threats.png)
 
 This repository previously also contained a PowerShell implementation (`SecurityMonitor.ps1`) plus an experimental C kernel driver. Both have been removed — only the C# version remains. The C# version avoids PowerShell-specific AMSI heuristics that the script implementation triggered because of its plaintext attack-tool name lists, hidden-window plus execution-policy-bypass combination, and download-cradle install pattern.
 
@@ -66,9 +72,9 @@ The `.exe` is its own installer. Just download `WhitehatSecurity.exe` from the l
   - registers in Windows **Apps & Features**
   - creates a **Start Menu** shortcut
   - creates a shortcut on **the user's Desktop** (handles OneDrive Known Folder Move) and on the **Public Desktop**
-  - adds an **HKLM\…\Run** entry so the program **auto-starts at every logon** in tray-only mode (`--silent`)
+  - optionally adds an **HKLM\…\Run** startup entry only after you agree in a separate prompt (default: No); upgrades preserve the existing preference
 - **Updating**: run a newer `.exe` from outside the install directory. It compares its own version with the copy in `C:\Program Files\Whitehat Security\` and offers to update it; accepting stops the running installed instance, replaces the binary, and restarts it in tray mode. Answering *No* runs the new copy portably and leaves the installed one untouched.
-- **Uninstall**: open *Settings → Apps → Apps & Features*, find **Whitehat Security**, click *Uninstall*. Or run `WhitehatSecurity.exe --uninstall` from a terminal. The uninstaller removes the install dir, shortcuts, registry entries, app-managed firewall/hosts rules, and restores DNS settings saved before the app changed them.
+- **Uninstall**: open *Settings → Apps → Apps & Features*, find **Whitehat Security**, click *Uninstall*. Or run `WhitehatSecurity.exe --uninstall` from a terminal. UAC is requested when needed. The uninstaller removes application files, shortcuts, startup and uninstall registration, app-managed firewall/hosts rules, and restores saved IPv4/IPv6 DNS settings. Final file removal waits for the app to exit. Cleanup failures preserve registration for retry. User logs, quarantine, settings, and remediation recovery records are retained; review these before manually deleting the data folder.
 
 CLI flags:
 
@@ -76,9 +82,10 @@ CLI flags:
 |------|--------|
 | (none) | Tray icon + dashboard |
 | `--silent` | Tray icon only, no dashboard auto-open, no install prompt |
-| `--install` | Copy self to Program Files, register in Add/Remove Programs (must be run elevated; UAC is requested automatically when triggered from the first-run dialog) |
-| `--uninstall` | Remove install dir, shortcuts, registry entry (run elevated) |
-| `--quiet` | Suppress success/error message boxes during install/uninstall |
+| `--install` | Copy self to Program Files and register in Apps & Features; request UAC when needed |
+| `--autostart` | With `--install`, explicitly enable startup at logon; omitted by silent Store installs |
+| `--uninstall` | Remove the application with UAC when needed; retain user data |
+| `--quiet` | Suppress installer dialogs, including errors; UAC may still appear; check the process exit code |
 | `--tab <name>` | Open a dashboard tab (`Status`, `Alerts`, `AI`, `Settings`, `Logs`, or `Console`) |
 
 ## Layout
@@ -116,7 +123,7 @@ CLI flags:
     │   ├── AuthenticodeVerifier.cs # embedded + catalog signatures
     │   ├── NativeMethods.cs      # P/Invoke (kernel32, ntdll, iphlpapi)
     │   ├── NativeStructs.cs      # MIB_TCPROW_OWNER_PID, etc.
-    │   └── NotifyIconPromote.cs  # Win11 IsPromoted registry helper
+    │   └── NotifyIconPromote.cs  # legacy helper, no longer called
     └── Ui/
         ├── TrayApplicationContext.cs
         ├── DashboardForm.cs
@@ -128,12 +135,12 @@ CLI flags:
 
 | Feature                                              | Status |
 |------------------------------------------------------|:------:|
-| Six-page sidebar dashboard (Status / Alerts / AI Threats / Settings / Logs / Console) | ✓ |
+| Six-page sidebar dashboard (Status / Alerts / Behavioural Scan / Settings / Logs / Console) | ✓ |
 | Self-installing single .exe (Apps & Features integration) | ✓ |
-| Auto-start at logon via HKLM Run key (`--silent`)    | ✓ |
+| Optional auto-start at logon via HKLM Run key (`--silent`) | ✓ |
 | Desktop + Start Menu shortcuts on install            | ✓ |
 | System tray icon + context menu                      | ✓ |
-| Windows 11 NotifyIcon `IsPromoted` self-promotion    | ✓ |
+| Tray visibility follows Windows user preferences | ✓ |
 | Balloon / toast notifications                        | ✓ |
 | Outbound TCP connection tracker                      | ✓ |
 | New listening port detection                         | ✓ |

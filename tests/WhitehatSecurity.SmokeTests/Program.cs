@@ -121,6 +121,7 @@ Run("DNS scripts target routed adapters and roll back failures", () =>
     AssertPowerShellParses(reset);
 });
 
+#if !STORE_BUILD
 Run("Secure DNS configures both resolvers without destructive disable", () =>
 {
     var enable = DnsConfiguration.BuildDohScript(
@@ -175,6 +176,8 @@ Run("Secure DNS switches the adapter, not just the server catalogue", () =>
     AssertPowerShellParses(reset);
 });
 
+#endif
+
 Run("DNS and Secure DNS cover IPv6 where IPv6 actually routes", () =>
 {
     var apply = DnsConfiguration.BuildProviderScript("Cloudflare");
@@ -187,12 +190,14 @@ Run("DNS and Secure DNS cover IPv6 where IPv6 actually routes", () =>
     Contains("-DestinationPrefix '::/0'", apply);
     Contains("-AddressFamily IPv6", apply);
 
+#if !STORE_BUILD
     var enable = DnsConfiguration.BuildDohScript(true, "Cloudflare");
     Contains("$addresses6 = @('2606:4700:4700::1111','2606:4700:4700::1001')",
         enable);
     // IPv6 DoH lives under Doh6, not Doh.
     Contains(@"'Doh6'", enable);
     Contains("-AddressFamily IPv6", enable);
+#endif
 
     // Both families roll back together, and the snapshot has to record the
     // IPv6 family or a failed apply would restore only half the state.
@@ -212,7 +217,9 @@ Run("DNS and Secure DNS cover IPv6 where IPv6 actually routes", () =>
     Equal(false, managed.Contains("2620:119:35::35"));
 
     AssertPowerShellParses(apply);
+#if !STORE_BUILD
     AssertPowerShellParses(enable);
+#endif
 });
 
 Run("Every engine category has a settings toggle", () =>
@@ -413,8 +420,10 @@ Run("Uninstall cleanup restores automatic DNS and both DoH resolvers", () =>
 
     // Deciding from ServerAddresses alone pinned the DHCP-supplied
     // resolvers as a static configuration on uninstall.
-    Contains("if ([bool]$adapter.Automatic)", script);
+    Contains("Restore-WhsDnsSnapshot -Snapshot $saved", script);
+    Contains("ServerAddressesV6", script);
 
+#if !STORE_BUILD
     // v7.4.3 started configuring the secondary resolver for DoH but the
     // cleanup list still only named the primaries.
     foreach (var address in new[]
@@ -432,6 +441,10 @@ Run("Uninstall cleanup restores automatic DNS and both DoH resolvers", () =>
     // Per-interface encrypted-DNS keys outlive a plain DNS reset, so the
     // uninstaller has to delete them too.
     Contains("DohInterfaceSettings", script);
+#else
+    DoesNotContain("DohInterfaceSettings", script);
+    DoesNotContain("Remove-DnsClientDohServerAddress", script);
+#endif
 
     AssertPowerShellParses(script);
 });
@@ -1387,6 +1400,65 @@ Run("RDP and Security event engines scan without throwing", () =>
         _ = engine.Scan().ToList();
     }
 });
+
+InstallerStoreTests.Run(Run);
+
+Run("Embedded privacy policy is available offline", () =>
+{
+    Contains("IPinfo", PrivacyNotice.Read());
+    Contains("DNS", PrivacyNotice.Read());
+});
+
+Run("Uninstall DNS rollback restores mixed IPv4 and IPv6 state", () =>
+{
+    var cleanup = ElevationHelper.BuildCleanupScript();
+    var start = cleanup.IndexOf("function Restore-WhsDnsSnapshot", StringComparison.Ordinal);
+    var end = cleanup.IndexOf("function Assert-WhsDnsAddresses", start, StringComparison.Ordinal);
+    var restoreFunction = cleanup[start..end];
+    var mock = """
+$ErrorActionPreference = 'Stop'
+$script:calls = [System.Collections.Generic.List[object]]::new()
+function Get-NetAdapter { param($InterfaceIndex, $ErrorAction) [pscustomobject]@{ InterfaceIndex = $InterfaceIndex } }
+function Set-DnsClientServerAddress {
+    param($InterfaceIndex, [switch]$ResetServerAddresses, $ServerAddresses, $ErrorAction)
+    $script:calls.Add([pscustomobject]@{ Reset = [bool]$ResetServerAddresses; Addresses = @($ServerAddresses) })
+}
+""" + "\n" + restoreFunction + """
+Restore-WhsDnsSnapshot -Snapshot @([pscustomobject]@{
+    InterfaceIndex = 7; Automatic = $true; ServerAddresses = @('192.0.2.1')
+    AutomaticV6 = $false; ServerAddressesV6 = @('2001:db8::53','2001:db8::54')
+})
+if ($script:calls.Count -ne 2 -or -not $script:calls[0].Reset) { exit 1 }
+if (($script:calls[1].Addresses -join ',') -ne '2001:db8::53,2001:db8::54') { exit 2 }
+$script:calls.Clear()
+Restore-WhsDnsSnapshot -Snapshot @([pscustomobject]@{
+    InterfaceIndex = 7; Automatic = $false; ServerAddresses = @('192.0.2.53')
+    AutomaticV6 = $false; ServerAddressesV6 = @('2001:db8::53')
+})
+if (($script:calls[1].Addresses -join ',') -ne '192.0.2.53,2001:db8::53') { exit 3 }
+exit 0
+""";
+    Equal(0, RunPowerShellArguments(ElevationHelper.BuildInlineArguments(mock)));
+});
+
+#if STORE_BUILD
+Run("Store build refuses disabling platform protection and unsupported DNS writes", () =>
+{
+    Equal(-5, ElevationHelper.SetFirewallProfile("Domain", false));
+    Equal(-5, ElevationHelper.SetFirewallProfile("Private", false));
+    Equal(-5, ElevationHelper.SetFirewallProfile("Public", false));
+    Equal(-5, ElevationHelper.SetDnsOverHttps(true, "Cloudflare"));
+    Equal(-5, ElevationHelper.SetDnsOverHttps(false, "Cloudflare"));
+    Throws(() => DnsConfiguration.BuildDohScript(true, "Cloudflare"));
+    foreach (var provider in DnsConfiguration.ProviderNames)
+    {
+        var script = DnsConfiguration.BuildProviderScript(provider);
+        DoesNotContain("DohInterfaceSettings", script);
+        DoesNotContain("Remove-WhsDohInterface", script);
+        AssertPowerShellParses(script);
+    }
+});
+#endif
 
 if (failures.Count > 0)
 {

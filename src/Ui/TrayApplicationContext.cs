@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Tray-only ApplicationContext. Owns the NotifyIcon, the dashboard form
-// (lazy-created), the MonitorHost, and the IsPromoted registry fix that
-// makes the tray icon visible on Windows 11 by default.
+// (lazy-created), and the MonitorHost. Windows controls tray icon visibility.
 
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.IO;
-using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 using WhitehatSecurity.Core;
@@ -28,7 +25,6 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly string           _configPath;
     private readonly EventWaitHandle  _instanceSignal;
     private readonly System.Windows.Forms.Timer _instanceTimer;
-    private readonly System.Windows.Forms.Timer _promoteTimer;
     private readonly Control _uiInvoker = new();
     private DashboardForm?            _dashboard;
 
@@ -85,29 +81,6 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         host.Start();
 
-        // Windows 11 IsPromoted fix — runs on a delay so Explorer has time to
-        // create the registry entry after Visible = true.
-        _promoteTimer = new System.Windows.Forms.Timer { Interval = 700 };
-        int attempts = 0;
-        _promoteTimer.Tick += (_, _) =>
-        {
-            attempts++;
-            int updated = NotifyIconPromote.Promote(GetExeNameHint());
-            if (updated > 0)
-            {
-                _logger.Info($"Tray icon promoted in registry ({updated} entries)");
-                // Toggle visibility once so Explorer re-evaluates promotion
-                _tray.Visible = false;
-                _tray.Visible = true;
-                _promoteTimer.Stop();
-            }
-            else if (attempts >= 10)
-            {
-                _promoteTimer.Stop();
-            }
-        };
-        _promoteTimer.Start();
-
         _instanceTimer = new System.Windows.Forms.Timer { Interval = 250 };
         _instanceTimer.Tick += (_, _) =>
         {
@@ -115,14 +88,6 @@ public sealed class TrayApplicationContext : ApplicationContext
                 OpenDashboard();
         };
         _instanceTimer.Start();
-    }
-
-    private static string GetExeNameHint()
-    {
-        // Environment.ProcessPath is single-file-safe; Assembly.Location returns
-        // empty string for assemblies embedded inside a single-file bundle.
-        var exe = Environment.ProcessPath ?? "WhitehatSecurity";
-        return Path.GetFileNameWithoutExtension(exe);
     }
 
     public void OpenDashboard(string? tab = null)
@@ -148,16 +113,72 @@ public sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add("Settings",       null, (_, _) => OpenDashboard("Settings"));
         menu.Items.Add("Logs",           null, (_, _) => OpenDashboard("Logs"));
         menu.Items.Add("Console",        null, (_, _) => OpenDashboard("Console"));
+        menu.Items.Add("Privacy Policy", null, (_, _) => OpenPrivacyPolicy());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) =>
         {
             _host.Stop();
             _instanceTimer.Stop();
-            _promoteTimer.Stop();
             _tray.Visible = false;
             ExitThread();
         });
         return menu;
+    }
+
+    private void OpenPrivacyPolicy()
+    {
+        try
+        {
+            using var dialog = new Form
+            {
+                Text = "Whitehat Security - Privacy Policy",
+                StartPosition = FormStartPosition.CenterScreen,
+                Size = new Size(780, 650),
+                MinimumSize = new Size(480, 360),
+                AutoScaleMode = AutoScaleMode.Dpi,
+                ShowIcon = false,
+                MinimizeBox = false,
+                Padding = new Padding(16),
+            };
+            using var policyFont = new Font("Segoe UI", 10);
+            var policy = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                WordWrap = true,
+                Font = policyFont,
+                AccessibleName = "Privacy policy text",
+                Text = "Current data directory: " + Paths.DataDir
+                    + Environment.NewLine + Environment.NewLine
+                    + PrivacyNotice.Read().Replace("\r\n", "\n")
+                        .Replace("\n", Environment.NewLine),
+                SelectionStart = 0,
+                SelectionLength = 0,
+            };
+            var footer = new Panel { Dock = DockStyle.Bottom, Height = 46 };
+            var close = new Button
+            {
+                Text = "Close",
+                DialogResult = DialogResult.OK,
+                Dock = DockStyle.Right,
+                Width = 100,
+            };
+            footer.Controls.Add(close);
+            dialog.Controls.Add(policy);
+            dialog.Controls.Add(footer);
+            dialog.AcceptButton = close;
+            dialog.CancelButton = close;
+            dialog.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Privacy policy: {ex.Message}");
+            MessageBox.Show("The offline privacy policy could not be opened. " +
+                "The policy is also included in the project's PRIVACY.md file.",
+                "Whitehat Security", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -166,8 +187,6 @@ public sealed class TrayApplicationContext : ApplicationContext
         {
             _instanceTimer.Stop();
             _instanceTimer.Dispose();
-            _promoteTimer.Stop();
-            _promoteTimer.Dispose();
             _dashboard?.Dispose();
             _tray.ContextMenuStrip?.Dispose();
             _tray.Dispose();

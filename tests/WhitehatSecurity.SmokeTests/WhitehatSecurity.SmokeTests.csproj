@@ -7,6 +7,9 @@
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(StoreBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);STORE_BUILD</DefineConstants>
+  </PropertyGroup>
   <!--
     The product project is only self-contained in Release. Mirroring that
     here keeps `dotnet run -c Debug` working; a self-contained test host

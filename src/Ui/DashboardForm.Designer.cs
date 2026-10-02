@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Hand-written designer for the main dashboard. Builds the sidebar nav, the
-// 6 content pages (Status / Alerts / AI Threats / Settings / Logs / Console)
+// 6 content pages (Status / Alerts / Behavioural Scan / Settings / Logs / Console)
 // and every static control. Code-behind file (DashboardForm.cs) handles the
 // dynamic logic.
 //
@@ -106,7 +106,7 @@ public sealed partial class DashboardForm
         AddNavButton("Console", "[>]  Console");
         AddNavButton("Logs",    "[L]  Logs");
         AddNavButton("Settings","[C]  Settings");
-        AddNavButton("AI",      "[AI] AI Threats");
+        AddNavButton("AI",      "[B] Behaviour Scan");
         AddNavButton("Alerts",  "[A]  Alerts");
         AddNavButton("Status",  "[S]  Status");
 
@@ -699,7 +699,7 @@ public sealed partial class DashboardForm
     }
 
     // ============================================================================
-    //  PAGE 3: AI THREATS — wired to HiddenProcess, Memory, BYOVD engines
+    //  PAGE 3: BEHAVIOURAL SCAN — wired to HiddenProcess, Memory, BYOVD engines
     // ============================================================================
     private Panel BuildAiThreatsPage()
     {
@@ -707,7 +707,7 @@ public sealed partial class DashboardForm
 
         var title = new Label
         {
-            Text      = "AI Threat Detection",
+            Text      = "Behavioural Scan",
             Font      = Theme.PageTitle(),
             ForeColor = Theme.Purple,
             AutoSize  = true,
@@ -941,7 +941,50 @@ public sealed partial class DashboardForm
         _dnsStatusLabel = dnsStatus;
         y += 58;
 
+#if STORE_BUILD
+        var dohNotice = new Label
+        {
+            Text = "Manage DNS encryption in Windows network settings for the selected adapter.",
+            Location = new Point(20, y),
+            Size = new Size(800, 34),
+            Font = Theme.Body(9),
+            ForeColor = Theme.TextDim,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+        };
+        page.Controls.Add(dohNotice);
+        y += 38;
+        var windowsDnsSettings = new Button
+        {
+            Text = "Open Windows Network Settings",
+            Location = new Point(20, y),
+            Size = new Size(290, 32),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Theme.AccentDim,
+            ForeColor = Theme.TextMain,
+            Font = Theme.Body(9),
+            Cursor = Cursors.Hand,
+        };
+        windowsDnsSettings.FlatAppearance.BorderSize = 0;
+        windowsDnsSettings.Click += (_, _) =>
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "ms-settings:network-status") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Windows network settings: {ex.Message}");
+                MessageBox.Show(this, "Open Windows Settings > Network & internet to " +
+                    "manage DNS encryption for your adapter.", "Windows Network Settings",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        };
+        page.Controls.Add(windowsDnsSettings);
+        y += 40;
+#else
         y = AddSettingCheckbox(page, "DNS_DoH", "Enable DNS over HTTPS", "Encrypt DNS queries (requires compatible provider)", _config.DNS_DoH, y);
+#endif
         ApplyDnsControlState();
 
         // Final padding so the last setting isn't flush with the bottom edge

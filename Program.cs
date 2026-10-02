@@ -18,6 +18,7 @@
 // "Apps & Features" list and can be uninstalled the normal way.
 
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -46,8 +47,11 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // Always wrap the entire entry point so an unhandled exception
-        // surfaces as a MessageBox instead of a silent crash. The v7.2.0
+        // Even failures before normal mode dispatch must stay unattended.
+        bool quiet = HasFlag(args, "--quiet", "-Quiet");
+        // Wrap the entire entry point so interactive startup failures
+        // surface as a MessageBox. Quiet setup receives only an exit code.
+        // The v7.2.0
         // bug was a Logger constructor crash that left zero diagnostic
         // information for the user; never letting that happen again.
         try
@@ -56,6 +60,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
+            if (quiet) return InstallerExitCodes.FromException(ex);
             try
             {
                 MessageBox.Show(
@@ -64,19 +69,31 @@ internal static class Program
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch { }
-            return 1;
+            return InstallerExitCodes.FromException(ex);
         }
     }
 
     private static int MainCore(string[] args)
     {
-        ApplicationConfiguration.Initialize();
-
         // ── Mode dispatch ───────────────────────────────────────────────
         bool silent    = HasFlag(args, "--silent",    "-Silent");
         bool install   = HasFlag(args, "--install",   "-Install");
         bool uninstall = HasFlag(args, "--uninstall", "-Uninstall");
         bool quiet     = HasFlag(args, "--quiet",     "-Quiet");
+        bool autostart = HasFlag(args, "--autostart", "-Autostart");
+        if ((install && uninstall) || (autostart && !install))
+            return InstallerExitCodes.InvalidParameter;
+        int setupParentProcessId = 0;
+        var setupParent = GetOption(args, "--setup-parent-pid");
+        if (setupParent is not null && (!int.TryParse(setupParent, out setupParentProcessId)
+            || setupParentProcessId <= 0 || (!install && !uninstall)))
+            return InstallerExitCodes.InvalidParameter;
+
+        // Setup is handled before any dashboard or first-run initialization.
+        if (install) return RunInstall(quiet, autostart, setupParentProcessId);
+        if (uninstall) return RunUninstall(quiet, setupParentProcessId);
+
+        ApplicationConfiguration.Initialize();
         var registryRollback = GetOption(
             args, "--apply-registry-rollback");
         var disableAlertService = GetOption(
@@ -97,8 +114,6 @@ internal static class Program
         if (restoreAlertService is not null)
             return ServiceRemediationService.ApplyRestoreEncoded(
                 restoreAlertService);
-        if (install)   return RunInstall(quiet);
-        if (uninstall) return RunUninstall(quiet);
 
         // ── First-run install prompt ────────────────────────────────────
         // Done BEFORE acquiring the mutex so the launched installed copy
@@ -106,14 +121,16 @@ internal static class Program
         if (!silent && !Installer.IsRunningFromInstallDir())
         {
             string? prompt = null;
-            if (!Installer.IsAlreadyInstalled())
+            bool alreadyInstalled = Installer.IsAlreadyInstalled();
+            if (!alreadyInstalled)
             {
                 prompt =
                     $"Install {Installer.ProductName} {Installer.ProductVersion} to:\n\n" +
                     $"    {Installer.DefaultInstallDir}\n\n" +
                     "This adds the program to Windows Apps & Features so it can\n" +
                     "be uninstalled the normal way, and creates Start Menu and\n" +
-                    "Desktop shortcuts.\n\n" +
+                    "Desktop shortcuts. Startup at logon is optional; you\n" +
+                    "will choose it separately.\n\n" +
                     "Click Yes to install, No to just run this copy once.";
             }
             else if (Installer.IsUpgradeAvailableForInstalledCopy(
@@ -142,13 +159,23 @@ internal static class Program
                 if (answer == DialogResult.Cancel) return 0;
                 if (answer == DialogResult.Yes)
                 {
-                    var rc = LaunchSelfElevated("--install");
+                    bool enableAutostart = !alreadyInstalled
+                        && MessageBox.Show(
+                            "Start Whitehat Security automatically in the system tray\n" +
+                            "when any user signs in to Windows?\n\n" +
+                            "Choose No to start it manually from the Start Menu.\n" +
+                            "You can also disable startup in Windows Settings > Apps > Startup.",
+                            "Whitehat Security - Optional startup",
+                            MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                            MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+                    var rc = LaunchSelfElevated(
+                        "--install --quiet" + (enableAutostart ? " --autostart" : ""));
                     if (rc != 0)
                     {
                         MessageBox.Show(
-                            rc == -2
+                            rc == InstallerExitCodes.Cancelled
                                 ? "Install was cancelled (UAC prompt declined)."
-                                : $"Install failed (exit code {rc}). Check the Windows Application event log for details.",
+                                : $"Install failed (exit code {rc}). Run this executable with --install without --quiet to see the error details.",
                             "Whitehat Security",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Warning);
@@ -258,14 +285,18 @@ internal static class Program
 
     // ------------------------------------------------------------------------
 
-    private static int RunInstall(bool quiet)
+    private static int RunInstall(bool quiet, bool enableAutostart, int setupParentProcessId)
     {
+        if (!Installer.IsElevated())
+            return LaunchSelfElevated("--install" + (quiet ? " --quiet" : "")
+                + (enableAutostart ? " --autostart" : ""));
         try
         {
             // Do not append privileged diagnostics to predictable files in
             // user temp: a planted link could redirect the write. Failures
             // still reach the installer dialog and process exit code.
-            Installer.InstallElevated();
+            Installer.InstallElevated(enableAutostart: enableAutostart,
+                setupParentProcessId: setupParentProcessId);
             if (!quiet)
                 MessageBox.Show(
                     $"Installed to:\n{Installer.DefaultInstallDir}\n\n" +
@@ -280,18 +311,26 @@ internal static class Program
                 MessageBox.Show($"Install failed:\n{ex.GetType().Name}: {ex.Message}",
                     "Whitehat Security",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return 1;
+            return InstallerExitCodes.FromException(ex);
         }
     }
 
-    private static int RunUninstall(bool quiet)
+    private static int RunUninstall(bool quiet, int setupParentProcessId)
     {
+        if (!Installer.IsElevated())
+            return LaunchSelfElevated("--uninstall" + (quiet ? " --quiet" : ""));
         try
         {
-            Installer.UninstallElevated();
+            bool cleanupPending = Installer.UninstallElevated(
+                setupParentProcessId: setupParentProcessId);
             if (!quiet)
                 MessageBox.Show(
-                    $"{Installer.ProductName} has been removed.",
+                    cleanupPending
+                        ? "System settings and shortcuts were cleaned up. Close this\n" +
+                          "dialog to finish removing the application files.\n\n" +
+                          "Your local settings, logs, and recovery records are retained."
+                        : $"{Installer.ProductName} has been removed.\n\n" +
+                          "Your local settings, logs, and recovery records are retained.",
                     "Whitehat Security",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
@@ -302,7 +341,7 @@ internal static class Program
                 MessageBox.Show($"Uninstall failed:\n{ex.GetType().Name}: {ex.Message}",
                     "Whitehat Security",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return 1;
+            return InstallerExitCodes.FromException(ex);
         }
     }
 
@@ -315,20 +354,20 @@ internal static class Program
             var psi = new ProcessStartInfo
             {
                 FileName        = self,
-                Arguments       = arguments,
+                Arguments       = arguments + $" --setup-parent-pid {Environment.ProcessId}",
                 Verb            = "runas",   // UAC
                 UseShellExecute = true,
             };
             using var p = Process.Start(psi);
-            if (p is null) return -1;
-            if (!p.WaitForExit(120_000))
-                return -3;
+            if (p is null) return InstallerExitCodes.InstallFailure;
+            // An interactive child can legitimately wait at its completion
+            // dialog. Do not report a timeout while it is still running.
+            p.WaitForExit();
             return p.ExitCode;
         }
-        catch (Exception)
+        catch (Win32Exception ex)
         {
-            // User denied UAC
-            return -2;
+            return InstallerExitCodes.FromException(ex);
         }
     }
 

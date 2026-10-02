@@ -10,7 +10,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <RootNamespace>WhitehatSecurity</RootNamespace>
     <AssemblyName>WhitehatSecurity</AssemblyName>
-    <Version>7.4.18.0</Version>
+    <Version>7.4.19.0</Version>
     <Company>Whitehat Security</Company>
     <Product>Whitehat Security Tool</Product>
     <Description>Real-time Windows security monitoring tool — C# port</Description>
@@ -23,6 +23,10 @@
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(StoreBuild)' == 'true'">
+    <DefineConstants>$(DefineConstants);STORE_BUILD</DefineConstants>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -33,6 +37,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="PRIVACY.md" LogicalName="WhitehatSecurity.PrivacyNotice.md" />
     <Compile Remove="tests\**\*.cs" />
     <PackageReference Include="System.Management" Version="8.0.0" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />

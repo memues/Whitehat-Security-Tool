@@ -64,8 +64,8 @@ internal static class Program
             try
             {
                 MessageBox.Show(
-                    $"Whitehat Security crashed during startup.\n\n{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}",
-                    "Whitehat Security - Fatal",
+                    $"{Installer.ProductName} crashed during startup.\n\n{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}",
+                    $"{Installer.ProductName} - Fatal",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch { }
@@ -152,7 +152,7 @@ internal static class Program
             {
                 var answer = MessageBox.Show(
                     prompt,
-                    "Whitehat Security - Installer",
+                    $"{Installer.ProductName} - Installer",
                     MessageBoxButtons.YesNoCancel,
                     MessageBoxIcon.Question);
 
@@ -161,11 +161,11 @@ internal static class Program
                 {
                     bool enableAutostart = !alreadyInstalled
                         && MessageBox.Show(
-                            "Start Whitehat Security automatically in the system tray\n" +
+                            $"Start {Installer.ProductName} automatically in the system tray\n" +
                             "when any user signs in to Windows?\n\n" +
                             "Choose No to start it manually from the Start Menu.\n" +
                             "You can also disable startup in Windows Settings > Apps > Startup.",
-                            "Whitehat Security - Optional startup",
+                            $"{Installer.ProductName} - Optional startup",
                             MessageBoxButtons.YesNo, MessageBoxIcon.Question,
                             MessageBoxDefaultButton.Button2) == DialogResult.Yes;
                     var rc = LaunchSelfElevated(
@@ -176,7 +176,7 @@ internal static class Program
                             rc == InstallerExitCodes.Cancelled
                                 ? "Install was cancelled (UAC prompt declined)."
                                 : $"Install failed (exit code {rc}). Run this executable with --install without --quiet to see the error details.",
-                            "Whitehat Security",
+                            Installer.ProductName,
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Warning);
                         return rc;
@@ -201,7 +201,7 @@ internal static class Program
                         {
                             MessageBox.Show(
                                 $"Installed but could not auto-launch:\n{ex.Message}\n\nLaunch it from the Start Menu.",
-                                "Whitehat Security",
+                                Installer.ProductName,
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         }
                     }
@@ -234,12 +234,12 @@ internal static class Program
         // Prune log files older than 30 days so the disk footprint stays
         // bounded over months of running. Best-effort — never throws.
         logger.CleanupOldLogs(30);
-        logger.Info($"=== WhitehatSecurity {Installer.ProductVersion} starting (silent={silent}) ===");
+        logger.Info($"=== {Installer.ProductName} {Installer.ProductVersion} starting (silent={silent}) ===");
         logger.Info($"Exe:         {Environment.ProcessPath}");
         logger.Info($"Data dir:    {Paths.DataDir}");
         logger.Info($"Config path: {configPath}");
         logger.Info($"Logs dir:    {logsDir}");
-        consoleSink.WriteLine($"Whitehat Security {Installer.ProductVersion} starting (silent={silent})");
+        consoleSink.WriteLine($"{Installer.ProductName} {Installer.ProductVersion} starting (silent={silent})");
         consoleSink.WriteLine($"Data dir: {Paths.DataDir}");
 
         // ── Build the monitor host with every engine ────────────────────
@@ -277,7 +277,7 @@ internal static class Program
         finally
         {
             host.Dispose();
-            logger.Info("=== WhitehatSecurity stopped ===");
+            logger.Info($"=== {Installer.ProductName} stopped ===");
         }
 
         return 0;
@@ -301,7 +301,7 @@ internal static class Program
                 MessageBox.Show(
                     $"Installed to:\n{Installer.DefaultInstallDir}\n\n" +
                     "You can now uninstall via Settings > Apps > Apps & Features.",
-                    "Whitehat Security",
+                    Installer.ProductName,
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
         }
@@ -309,7 +309,7 @@ internal static class Program
         {
             if (!quiet)
                 MessageBox.Show($"Install failed:\n{ex.GetType().Name}: {ex.Message}",
-                    "Whitehat Security",
+                    Installer.ProductName,
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             return InstallerExitCodes.FromException(ex);
         }
@@ -331,7 +331,7 @@ internal static class Program
                           "Your local settings, logs, and recovery records are retained."
                         : $"{Installer.ProductName} has been removed.\n\n" +
                           "Your local settings, logs, and recovery records are retained.",
-                    "Whitehat Security",
+                    Installer.ProductName,
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
         }
@@ -339,7 +339,7 @@ internal static class Program
         {
             if (!quiet)
                 MessageBox.Show($"Uninstall failed:\n{ex.GetType().Name}: {ex.Message}",
-                    "Whitehat Security",
+                    Installer.ProductName,
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             return InstallerExitCodes.FromException(ex);
         }

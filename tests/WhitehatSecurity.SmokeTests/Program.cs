@@ -1413,6 +1413,28 @@ Run("Embedded privacy policy is available offline", () =>
     Contains("DNS", PrivacyNotice.Read());
 });
 
+Run("Production assembly exposes the application license and complete dependency notices offline", () =>
+{
+    var notices = LicenseNotices.Read();
+    Contains("Copyright (c) 2026 memues", notices);
+    Contains("Permission is hereby granted, free of charge", notices);
+    Contains("Copyright (c) .NET Foundation and Contributors", notices);
+    Contains("PACKAGE: System.Management/", notices);
+
+    // Source comparison catches an omitted or truncated embedded document,
+    // while the attribution checks also work from a copied test artifact.
+    var root = FindRepositoryRoot();
+    if (root is not null)
+    {
+        foreach (var fileName in new[] { "LICENSE", "THIRD-PARTY-NOTICES.txt" })
+        {
+            var completeSource = File.ReadAllText(Path.Combine(root, fileName)).TrimEnd();
+            if (!notices.Contains(completeSource, StringComparison.Ordinal))
+                throw new InvalidOperationException($"The embedded offline notices do not contain the complete {fileName}.");
+        }
+    }
+});
+
 Run("Uninstall DNS rollback restores mixed IPv4 and IPv6 state", () =>
 {
     var cleanup = ElevationHelper.BuildCleanupScript();

@@ -53,7 +53,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _tray = new NotifyIcon
         {
             Icon             = ShieldIcon,
-            Text             = "Whitehat Security",
+            Text             = Installer.ProductName,
             Visible          = true,
             ContextMenuStrip = BuildContextMenu(),
         };
@@ -114,6 +114,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add("Logs",           null, (_, _) => OpenDashboard("Logs"));
         menu.Items.Add("Console",        null, (_, _) => OpenDashboard("Console"));
         menu.Items.Add("Privacy Policy", null, (_, _) => OpenPrivacyPolicy());
+        menu.Items.Add("Licenses / Third-party notices", null, (_, _) => OpenLicenseNotices());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) =>
         {
@@ -126,12 +127,22 @@ public sealed class TrayApplicationContext : ApplicationContext
     }
 
     private void OpenPrivacyPolicy()
+        => OpenOfflineNotice("Privacy Policy",
+            () => "Current data directory: " + Paths.DataDir
+                + Environment.NewLine + Environment.NewLine + PrivacyNotice.Read(),
+            "The policy is also included in the project's PRIVACY.md file.");
+
+    private void OpenLicenseNotices()
+        => OpenOfflineNotice("Licenses / Third-party notices", LicenseNotices.Read,
+            "The notices are also included in the project's LICENSE and THIRD-PARTY-NOTICES.txt files.");
+
+    private void OpenOfflineNotice(string title, Func<string> readText, string fallback)
     {
         try
         {
             using var dialog = new Form
             {
-                Text = "Whitehat Security - Privacy Policy",
+                Text = $"{Installer.ProductName} - {title}",
                 StartPosition = FormStartPosition.CenterScreen,
                 Size = new Size(780, 650),
                 MinimumSize = new Size(480, 360),
@@ -140,22 +151,22 @@ public sealed class TrayApplicationContext : ApplicationContext
                 MinimizeBox = false,
                 Padding = new Padding(16),
             };
-            using var policyFont = new Font("Segoe UI", 10);
-            var policy = new TextBox
+            using var noticeFont = new Font("Segoe UI", 10);
+            var notice = new TextBox
             {
                 Dock = DockStyle.Fill,
                 Multiline = true,
                 ReadOnly = true,
+                MaxLength = int.MaxValue,
                 ScrollBars = ScrollBars.Vertical,
                 WordWrap = true,
-                Font = policyFont,
-                AccessibleName = "Privacy policy text",
-                Text = "Current data directory: " + Paths.DataDir
-                    + Environment.NewLine + Environment.NewLine
-                    + PrivacyNotice.Read().Replace("\r\n", "\n")
-                        .Replace("\n", Environment.NewLine),
+                ShortcutsEnabled = true,
+                Font = noticeFont,
+                AccessibleName = title + " text",
+                Text = readText().Replace("\r\n", "\n").Replace("\n", Environment.NewLine),
                 SelectionStart = 0,
                 SelectionLength = 0,
+                TabIndex = 0,
             };
             var footer = new Panel { Dock = DockStyle.Bottom, Height = 46 };
             var close = new Button
@@ -164,20 +175,21 @@ public sealed class TrayApplicationContext : ApplicationContext
                 DialogResult = DialogResult.OK,
                 Dock = DockStyle.Right,
                 Width = 100,
+                TabIndex = 1,
             };
             footer.Controls.Add(close);
-            dialog.Controls.Add(policy);
+            dialog.Controls.Add(notice);
             dialog.Controls.Add(footer);
             dialog.AcceptButton = close;
             dialog.CancelButton = close;
+            dialog.Shown += (_, _) => notice.Focus();
             dialog.ShowDialog();
         }
         catch (Exception ex)
         {
-            _logger.Error($"Privacy policy: {ex.Message}");
-            MessageBox.Show("The offline privacy policy could not be opened. " +
-                "The policy is also included in the project's PRIVACY.md file.",
-                "Whitehat Security", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            _logger.Error($"{title}: {ex.Message}");
+            MessageBox.Show($"The offline {title.ToLowerInvariant()} could not be opened. " + fallback,
+                Installer.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

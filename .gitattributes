@@ -1,0 +1,2 @@
+# Keep upstream license/notice line endings and whitespace unchanged in this aggregate.
+THIRD-PARTY-NOTICES.txt -text whitespace=-trailing-space

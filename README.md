@@ -76,7 +76,7 @@ The `.exe` is its own installer. Just download `WhitehatSecurity.exe` from the l
   - creates a shortcut on **the user's Desktop** (handles OneDrive Known Folder Move) and on the **Public Desktop**
   - optionally adds an **HKLM\…\Run** startup entry only after you agree in a separate prompt (default: No); upgrades preserve the existing preference
 - **Updating**: run a newer `.exe` from outside the install directory. It compares its own version with the copy in `C:\Program Files\Whitehat Security\` and offers to update it; accepting stops the running installed instance, replaces the binary, and restarts it in tray mode. Answering *No* runs the new copy portably and leaves the installed one untouched.
-- **Uninstall**: open *Settings → Apps → Apps & Features*, find **Whitehat Security**, click *Uninstall*. Or run `WhitehatSecurity.exe --uninstall` from a terminal. UAC is requested when needed. The uninstaller removes application files, shortcuts, startup and uninstall registration, app-managed firewall/hosts rules, and restores saved IPv4/IPv6 DNS settings. Final file removal waits for the app to exit. Cleanup failures preserve registration for retry. User logs, quarantine, settings, and remediation recovery records are retained; review these before manually deleting the data folder.
+- **Uninstall**: open *Settings → Apps → Apps & Features*, find **Whitehat Security Tool**, click *Uninstall*. Or run `WhitehatSecurity.exe --uninstall` from a terminal. UAC is requested when needed. The uninstaller removes application files, shortcuts, startup and uninstall registration, app-managed firewall/hosts rules, and restores saved IPv4/IPv6 DNS settings. Final file removal waits for the app to exit. Cleanup failures preserve registration for retry. User logs, quarantine, settings, and remediation recovery records are retained; review these before manually deleting the data folder.
 
 CLI flags:
 
@@ -203,4 +203,10 @@ The first run writes `notification_config.json` next to the executable with the 
 
 ## License
 
-Same as the parent repository.
+Whitehat Security Tool is licensed under the [MIT License](LICENSE),
+copyright (c) 2026 memues. This documents the existing MIT declaration in the
+original repository and C# source headers; see the [license provenance](docs/license-provenance.md).
+
+Bundled dependencies retain their own copyright and license notices in
+[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). The application includes both
+documents offline in its **Licenses and Notices** tray menu.

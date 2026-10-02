@@ -5,8 +5,8 @@
 //
 // Install location: %ProgramFiles%\Whitehat Security\WhitehatSecurity.exe
 // Add/Remove key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WhitehatSecurity
-// Start menu link:  %ProgramData%\Microsoft\Windows\Start Menu\Programs\Whitehat Security.lnk
-// Desktop link:     %PUBLIC%\Desktop\Whitehat Security.lnk
+// Start menu link:  %ProgramData%\Microsoft\Windows\Start Menu\Programs\Whitehat Security Tool.lnk
+// Desktop link:     %PUBLIC%\Desktop\Whitehat Security Tool.lnk
 //
 // All file copies and registry writes happen elevated. Self-deletion of the
 // installed binary during uninstall uses an inline, encoded Windows
@@ -23,9 +23,12 @@ namespace WhitehatSecurity.Core;
 
 public static class Installer
 {
-    public const string ProductName    = "Whitehat Security";
+    public const string ProductName    = "Whitehat Security Tool";
     public const string Publisher      = "Whitehat Security";
     public const string AppId          = "WhitehatSecurity";
+    // Keep the existing installation/data identity so upgrades replace the
+    // same copy. Only presentation and shortcut names use ProductName.
+    private const string LegacyProductName = "Whitehat Security";
 
     /// <summary>
     /// Read from the assembly rather than hard-coded. The constant used to be
@@ -50,7 +53,7 @@ public static class Installer
     public static string DefaultInstallDir =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            ProductName);
+            LegacyProductName);
 
     public static string DefaultInstallExePath =>
         Path.Combine(DefaultInstallDir, "WhitehatSecurity.exe");
@@ -77,6 +80,16 @@ public static class Installer
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
             ProductName + ".lnk");
+
+    private static void DeleteLegacyShortcuts(Logger? logger)
+    {
+        foreach (var shortcut in new[] { StartMenuShortcut, PublicDesktopShortcut, UserDesktopShortcut })
+        {
+            var directory = Path.GetDirectoryName(shortcut);
+            if (!string.IsNullOrEmpty(directory))
+                DeleteShortcut(Path.Combine(directory, LegacyProductName + ".lnk"), logger);
+        }
+    }
 
     /// <summary>
     /// Where Windows looks for system-wide auto-start entries. A new entry
@@ -256,6 +269,8 @@ public static class Installer
         CreateShortcut(StartMenuShortcut, dstExe);
         CreateShortcut(PublicDesktopShortcut, dstExe);
         CreateShortcut(UserDesktopShortcut, dstExe);
+        // Replace old display names only after the new links are available.
+        DeleteLegacyShortcuts(logger);
 
         // Do not re-enable startup on updates: Windows Startup settings may
         // have disabled the existing entry. An explicit command is consent
@@ -406,6 +421,7 @@ public static class Installer
         DeleteShortcut(StartMenuShortcut, logger);
         DeleteShortcut(PublicDesktopShortcut, logger);
         DeleteShortcut(UserDesktopShortcut, logger);
+        DeleteLegacyShortcuts(logger);
 
         // Keep user-authored settings, diagnostic logs and remediation
         // recovery journals. Silent setup must not destroy those records.

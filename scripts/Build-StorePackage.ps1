@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+#requires -Version 7.0
 # Builds the EXE/ MSI submission route's standalone self-installer. Never submits it.
 [CmdletBinding()]
 param(
@@ -197,7 +198,13 @@ $targetTemplate.Replace('__MANIFEST__', (ConvertTo-XmlText $manifestPath)).
     Replace('__PAYLOAD__', (ConvertTo-XmlText $payloadDir)) |
     Set-Content -LiteralPath $targetsPath -Encoding UTF8
 
-& dotnet publish $projectPath -c Release -r win-x64 --self-contained true -o $publishDir `
+& dotnet restore $projectPath -r win-x64 '-p:Configuration=Release' '-p:StoreBuild=true' `
+    '-p:NuGetAudit=true' '-p:NuGetAuditMode=all' '-p:NuGetAuditLevel=low' `
+    '-warnaserror:NU1901,NU1902,NU1903,NU1904'
+if ($LASTEXITCODE -ne 0) { throw 'Store restore failed. No submission artifact was produced.' }
+& (Join-Path $PSScriptRoot 'Update-ThirdPartyNotices.ps1') -Check
+
+& dotnet publish $projectPath -c Release -r win-x64 --self-contained true --no-restore -o $publishDir `
     '-p:StoreBuild=true' '-p:PublishSingleFile=true' '-p:IncludeNativeLibrariesForSelfExtract=true' `
     '-p:DebugType=embedded' "-p:CustomAfterMicrosoftCommonTargets=$targetsPath"
 if ($LASTEXITCODE -ne 0) { throw 'Store publish failed. No submission artifact was produced.' }

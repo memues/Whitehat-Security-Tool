@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  REVIEW TEMPLATE ONLY — NOT A BUILD OR SUBMISSION MANIFEST.
+  The Partner Center identity is real; the package implementation is pending.
+  __REQUIRED_*__ tokens are deliberate unresolved values and prevent treating
+  this file as a validated package. No referenced asset is asserted to exist.
+  Do not include in a build until Microsoft eligibility/lifecycle guidance,
+  package-aware runtime changes, assets and package tests are complete.
+  See ../../docs/msix-lifecycle-review.md.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap10 desktop rescap">
+
+  <!-- Store ID: 9MTVDV7FSJDS
+       Expected PFN: omni.apps.WhitehatSecurityTool_mhkhb0gkqyqq8 -->
+  <Identity
+    Name="omni.apps.WhitehatSecurityTool"
+    Publisher="CN=79C00735-EF73-493D-AE6B-36BE09C31052"
+    Version="__REQUIRED_REVIEWED_PACKAGE_VERSION__"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Whitehat Security Tool</DisplayName>
+    <PublisherDisplayName>omni.apps</PublisherDisplayName>
+    <Description>Local Windows security monitoring and user-directed response.</Description>
+    <Logo>__REQUIRED_PACKAGE_LOGO_ASSET__</Logo>
+  </Properties>
+
+  <Resources>
+    <Resource Language="__REQUIRED_VERIFIED_LISTING_LANGUAGE__" />
+  </Resources>
+
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="__REQUIRED_MINIMUM_TESTED_WINDOWS_VERSION__"
+      MaxVersionTested="__REQUIRED_HIGHEST_TESTED_WINDOWS_VERSION__" />
+  </Dependencies>
+
+  <Applications>
+    <!-- This executable name matches the current project. Its future packaged
+         behavior is NOT implemented or validated by this declaration. Keep
+         the embedded Win32 execution manifest asInvoker for ordinary launch. -->
+    <Application
+      Id="WhitehatSecurityTool"
+      Executable="WhitehatSecurity.exe"
+      EntryPoint="Windows.FullTrustApplication"
+      uap10:RuntimeBehavior="packagedClassicApp"
+      uap10:TrustLevel="mediumIL">
+      <uap:VisualElements
+        DisplayName="Whitehat Security Tool"
+        Description="Local Windows security monitoring and user-directed response."
+        BackgroundColor="transparent"
+        Square150x150Logo="__REQUIRED_SQUARE150_LOGO_ASSET__"
+        Square44x44Logo="__REQUIRED_SQUARE44_LOGO_ASSET__" />
+
+      <Extensions>
+        <!-- Proposed startup registration: disabled until explicit opt-in.
+             uap10:Parameters is documented for packaged desktop extensions;
+             verify tray-only argument delivery on the minimum Windows build.
+             Enabling/disabling through StartupTask and respecting Windows'
+             disabled-by-user state still require application implementation. -->
+        <desktop:Extension
+          Category="windows.startupTask"
+          Executable="WhitehatSecurity.exe"
+          EntryPoint="Windows.FullTrustApplication"
+          uap10:Parameters="--silent">
+          <desktop:StartupTask
+            TaskId="WhitehatSecurityToolStartup"
+            Enabled="false"
+            DisplayName="Whitehat Security Tool" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Proposed, subject to Microsoft review. Declaring capabilities neither
+         grants Store approval nor replaces UAC for privileged user actions. -->
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="allowElevation" />
+  </Capabilities>
+</Package>

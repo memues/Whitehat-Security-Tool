@@ -1079,7 +1079,7 @@ public sealed partial class DashboardForm : Form
         {
             var blockedIp = state.BlockedIp;
             var answer = MessageBox.Show(
-                $"Remove Whitehat Security firewall rules for {blockedIp}?",
+                $"Remove {Installer.ProductName} firewall rules for {blockedIp}?",
                 "Unblock IP - Confirm",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
@@ -1577,7 +1577,7 @@ public sealed partial class DashboardForm : Form
                         "The DNS provider was applied and verified, but " +
                         "DNS-over-HTTPS could not be enabled. Secure DNS " +
                         "was turned off so the dashboard matches Windows.",
-                        "Whitehat Security",
+                        Installer.ProductName,
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
                     ApplyDnsControlState();
@@ -1644,7 +1644,7 @@ public sealed partial class DashboardForm : Form
             $"Could not {action}: {DescribeElevationFailure(result)}\n\n" +
             "The system was rolled back when possible. See the Console " +
             "or log for the exact Windows error.",
-            "Whitehat Security",
+            Installer.ProductName,
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning);
     }
@@ -1682,7 +1682,7 @@ public sealed partial class DashboardForm : Form
                 $"Could not apply '{cb.Tag}': " +
                 $"{DescribeElevationFailure(rc)}\n\n" +
                 "The checkbox has been reverted.",
-                "Whitehat Security",
+                Installer.ProductName,
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }

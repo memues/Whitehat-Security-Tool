@@ -10,11 +10,12 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <RootNamespace>WhitehatSecurity</RootNamespace>
     <AssemblyName>WhitehatSecurity</AssemblyName>
+    <AssemblyTitle>Whitehat Security Tool</AssemblyTitle>
     <Version>7.4.19.0</Version>
     <Company>Whitehat Security</Company>
     <Product>Whitehat Security Tool</Product>
     <Description>Real-time Windows security monitoring tool — C# port</Description>
-    <Copyright>Copyright (c) 2026</Copyright>
+    <Copyright>Copyright (c) 2026 memues</Copyright>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -38,6 +39,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="PRIVACY.md" LogicalName="WhitehatSecurity.PrivacyNotice.md" />
+    <EmbeddedResource Include="LICENSE" LogicalName="WhitehatSecurity.License.txt" />
+    <EmbeddedResource Include="THIRD-PARTY-NOTICES.txt" LogicalName="WhitehatSecurity.ThirdPartyNotices.txt" />
     <Compile Remove="tests\**\*.cs" />
     <PackageReference Include="System.Management" Version="8.0.0" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />

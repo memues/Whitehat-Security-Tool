@@ -31,7 +31,7 @@ public sealed partial class DashboardForm
         SuspendLayout();
 
         // ---------------- Form ----------------
-        Text          = "Whitehat Security Dashboard";
+        Text          = Installer.ProductName;
         Size          = new Size(1080, 720);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor     = Theme.Bg;
@@ -51,13 +51,13 @@ public sealed partial class DashboardForm
 
         var logo = new Label
         {
-            Text      = "Whitehat Security",
+            Text      = Installer.ProductName,
             ForeColor = Theme.Accent,
             Font      = new Font("Segoe UI", 13, FontStyle.Bold),
             AutoSize  = false,
             TextAlign = ContentAlignment.MiddleCenter,
             Dock      = DockStyle.Top,
-            Height    = 36,
+            Height    = 52,
         };
         var version = new Label
         {

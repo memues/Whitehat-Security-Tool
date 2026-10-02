@@ -1,15 +1,35 @@
-# Microsoft Store EXE submission
+# Microsoft Store preparation
 
-This project uses the Microsoft Store **EXE installer** route. It is a WinForms
+The current packaging implementation supports the **EXE installer** route. It is a WinForms
 desktop security monitor with explicit administrator actions, a standalone
 self-installer, and custom cleanup of its own firewall/hosts/DNS changes.
 The normal build remains available for direct distribution. The Store build is
 compiled with `StoreBuild=true` and keeps the restrictions documented in the app.
 
-The repository alone is **not a certified or submission-ready product**. A real
-publisher certificate, a verified signed release, a public privacy-policy URL,
-Partner Center information, and installation tests are still needed. No submission
-is performed by the build script.
+The repository alone is **not a certified or submission-ready product**. An
+approved packaging/signing route, a verified release candidate and installation
+tests are still needed. No submission is performed by the build script.
+
+## Approval status — 2 October 2026
+
+The exact product name **Whitehat Security Tool** is reserved in Partner Center
+as an MSIX app, Store ID `9MTVDV7FSJDS`. Submission 1 is a draft, not a
+certification submission. Publisher display name: `omni.apps`; the current
+developer account type is **Individual**. The draft's category, privacy-policy
+URL, support links and x64 requirement have been saved; Properties is complete.
+No package has been uploaded.
+
+An advance `allowElevation` eligibility request was sent to Microsoft's
+documented contact, `reportapp@microsoft.com`, with the real product identity,
+account type, preserved response functions and unresolved package lifecycle.
+An eligibility inquiry was also sent to `support@signpath.io` for the Foundation
+free-signing route. Neither request constitutes approval, signing acceptance,
+or app certification. Both responses are pending.
+
+The [MSIX lifecycle review](msix-lifecycle-review.md) and manifest template record
+the reserved identity and the engineering/approval gates. The template is not a
+buildable or validated Store package. The EXE remains an alternative if an
+accepted free-signing workflow becomes available.
 
 ## Why this is not an MSIX conversion
 
@@ -21,8 +41,8 @@ unverified. The EXE route preserves the desktop installer and does not require
 claiming an elevation exception has been approved.
 
 The current development work is **not an MSIX conversion**. The selected direction
-is to preserve supported response functions while preparing free-signing and
-capability-eligibility inquiries. A monitoring-only edition has not been selected.
+is to preserve supported response functions while awaiting free-signing and
+capability-eligibility responses. A monitoring-only edition has not been selected.
 No hosted signing acceptance, elevation approval, lifecycle compatibility or Store
 certification is implied by the EXE preparation work. Platform security protections
 and supported-API requirements still apply to every remediation path.
@@ -46,9 +66,12 @@ policy, verifiable builds and manual release approval. Vulnerability-discovery t
 are excluded; actual breach/malware detection has an exception.
 
 Whitehat's vulnerable-driver warnings and non-loopback listener monitoring therefore
-need a specific eligibility decision. There is also no root `LICENSE` file:
-`README.md` refers only to a parent repository, although source files carry MIT
-SPDX headers. Owner clarification is needed; this work does not change licensing.
+need a specific eligibility decision. Repository history explicitly declared MIT,
+and current source files carry MIT SPDX headers. The owner confirmed that the
+historical author aliases belong to them. Full project and dependency license
+notices are included in the repository and executable; see
+[license provenance](license-provenance.md). Foundation eligibility still
+requires its own review.
 Required signing roles, MFA, and a public signing policy have not been verified.
 Do not describe SignPath acceptance or free signing as already available.
 
@@ -56,14 +79,15 @@ Foundation signing also cannot sign unrelated upstream binaries with the project
 certificate. The current local-certificate script is **not a hosted SignPath
 integration** and must not be reused unchanged: it signs unsigned bundled PEs.
 An accepted hosted workflow would need upstream-signature coverage compatible with
-Microsoft's all-PE signing requirement. No application, account creation or message
-has been sent; the [application page](https://signpath.org/apply.html) is a reference.
+Microsoft's all-PE signing requirement. No formal application or signing account
+has been created. A preliminary inquiry has been sent; the
+[application page](https://signpath.org/apply.html) is a reference for formal onboarding.
 
 ## Build the signed standalone installer
 
 Prerequisites:
 
-- Windows, the repository's .NET SDK, and Windows SDK SignTool.
+- Windows, PowerShell 7 (`pwsh`), the repository's .NET SDK, and Windows SDK SignTool.
 - A currently valid code-signing certificate with its private key accessible in
   `CurrentUser\My` or `LocalMachine\My`. The issuing CA must belong to the
   **Microsoft Trusted Root Program**. A self-signed certificate does not qualify.
@@ -73,7 +97,7 @@ Prerequisites:
 From the repository root:
 
 ```powershell
-.\scripts\Build-StorePackage.ps1 -CertificateThumbprint 'YOUR_40_HEX_CHARACTER_THUMBPRINT'
+pwsh -NoProfile -File .\scripts\Build-StorePackage.ps1 -CertificateThumbprint 'YOUR_40_HEX_CHARACTER_THUMBPRINT'
 ```
 
 Use `-CertificateStore LocalMachine`, `-SignToolPath`, `-TimestampUrl`, or

@@ -1,8 +1,8 @@
-# Whitehat Security privacy policy
+# Whitehat Security Tool privacy policy
 
 Last updated: 2 October 2026
 
-Whitehat Security is a local Windows security monitoring utility maintained in the
+Whitehat Security Tool is a local Windows security monitoring utility maintained in the
 memues/Whitehat-Security-Tool GitHub project. It does not require an account and
 does not automatically send telemetry, crash reports, scan results, files, or
 logs to the project maintainer. It has no advertising or analytics service.
@@ -47,7 +47,7 @@ HTTPS page on ipinfo.io in your default browser. Continuing shares the displayed
 IP address in the page URL with IPinfo. IPinfo also receives the public IP address
 of your browser's connection and normal browser request information; your
 browser or IPinfo may use cookies or keep history. Declining does not make the
-request. Whitehat Security does not send the rest of the alert or a log file.
+request. Whitehat Security Tool does not send the rest of the alert or a log file.
 IPinfo's handling of the request is governed by https://ipinfo.io/privacy-policy.
 Consent applies to that lookup only; decline future prompts to stop future
 lookups. A completed request cannot be withdrawn by this application.

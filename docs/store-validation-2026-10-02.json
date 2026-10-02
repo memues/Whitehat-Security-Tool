@@ -1,7 +1,7 @@
 {
   "SchemaVersion": 1,
   "Date": "2026-10-02",
-  "Status": "Development candidate; not cleared for certification submission",
+  "Status": "In certification; pre-processing in progress; approval and publication pending",
   "Product": "Whitehat Security Tool",
   "StoreId": "9MTVDV7FSJDS",
   "ProductVersion": "7.4.20.0",
@@ -78,16 +78,35 @@
     "SectionStatus": "Complete",
     "ESRB": "Everyone",
     "PEGI": "3+",
-    "CurrentRatingId": "Pending"
+    "CurrentRatingId": "Pending",
+    "RatingIdObservation": "Last observed before submission; post-submission value not rechecked"
   },
   "PackageValidation": {
     "NuGetAudit": "Passed",
     "EmbeddedNotices": "Passed",
     "MakeAppxSemanticValidation": "Passed",
     "PartnerCenterDraftUpload": "Complete with restricted-capability approval warning",
-    "AllDraftFormSectionsComplete": true,
-    "SubmitForCertificationButtonEnabled": true,
-    "CertificationSubmitted": false
+    "AllFormSectionsCompleteBeforeSubmission": true,
+    "SubmitForCertificationButtonEnabledBeforeSubmission": true,
+    "CertificationSubmitted": true
+  },
+  "StoreSubmission": {
+    "SubmissionNumber": 1,
+    "StatusObservedAtUtc": "2026-10-02T03:34:25Z",
+    "ExactSubmittedAtUtc": null,
+    "ObservationNote": "Timestamp records observed Partner Center status, not the exact submission time",
+    "Status": "In certification",
+    "SubmissionStage": "Completed",
+    "PreProcessingStage": "In progress",
+    "CertificationStage": "Pending",
+    "PublishingStage": "Pending",
+    "PublishingSetting": "Start publishing as soon as certification passes",
+    "Channel": "Partner Center UI",
+    "PublisherAuthorization": "Explicit renewed instruction to submit the existing package after remaining limitations were explained",
+    "LocalStoreSubmissionAttestationPassed": false,
+    "LocalStoreSubmissionGateChangedOrBypassed": false,
+    "PendingAttestationsUnchanged": true,
+    "StatusEvidence": "outputs/whitehat-store-submitted.jpg"
   },
   "Pending": [
     "Microsoft runFullTrust/allowElevation and Individual-account eligibility approval",

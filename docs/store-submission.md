@@ -7,29 +7,41 @@ installer route. Supported response functions remain part of the product.
 The normal build remains available for direct distribution. Both Store packaging
 scripts compile with `StoreBuild=true` and retain the documented restrictions.
 
-The repository alone is **not a certified or submission-ready product**. An
-approved capability/account route, a verified release candidate and packaged
-installation tests are still needed. Neither packaging script submits a product.
+Version 7.4.20 has been **submitted for Microsoft Store certification** through
+Partner Center. It is not certified or published. Capability/account approval
+and the remaining runtime validation are still pending. Neither packaging script
+submits a product, and the local readiness attestation check has not passed.
 
 ## Approval status — 2 October 2026
 
 The exact product name **Whitehat Security Tool** is reserved in Partner Center
-as an MSIX app, Store ID `9MTVDV7FSJDS`. Submission 1 is a draft, not a
-certification submission. Publisher display name: `omni.apps`; the current
-developer account type is **Individual**. The draft's category, privacy-policy
+as an MSIX app, Store ID `9MTVDV7FSJDS`. Submission 1 is **In certification**,
+with **Submission completed** and **Pre-processing in progress**; the later
+Certification and Publishing stages are pending. This status was observed at
+**2026-10-02T03:34:25Z**; the exact submission time was not recorded. Evidence is
+saved as `outputs/whitehat-store-submitted.jpg` in the task's output directory.
+Publisher display name: `omni.apps`; the current
+developer account type is **Individual**. The category, privacy-policy
 URL, support links and x64 requirement have been saved. Properties and free
 worldwide pricing/availability are complete. English (United States) and Turkish
 (Türkiye) listings are complete with two actual application screenshots and
 captions each; both correctly identify the interface as English. Submission
 options include explicit restricted-capability justifications and reviewer notes.
-The unsigned 7.4.20 candidate is saved in the Store draft; package acceptance
+The unchanged unsigned 7.4.20 candidate was submitted; package acceptance
 completed with a restricted-capability approval warning. The publisher explicitly
 accepted the IARC terms, confirmed adulthood and consented to publisher/email
-sharing; the acceptance was saved. Age ratings is now **Complete**, showing ESRB
-Everyone and PEGI 3+, while **Current Rating ID remains Pending**. All draft form
-sections are complete and **Submit for certification** is enabled, but it has not
-been selected. Microsoft capability/account approval and the remaining technical
-validation gates still apply.
+sharing; the acceptance was saved. Before submission, Age ratings was
+**Complete**, showing ESRB Everyone and PEGI 3+, while **Current Rating ID was
+Pending**; its post-submission value has not been rechecked. All form sections
+were complete before **Submit for certification** was selected.
+
+After the remaining limitations were explained, the publisher explicitly renewed
+the instruction to send this existing package for Microsoft's review. No pending
+review attestation was marked Verified, and the local `StoreSubmission` check was
+neither passed nor changed to bypass its requirements. Microsoft capability/account
+approval and the remaining technical validation gates still apply. The observed
+publishing setting is **publish as soon as certification passes**; it does not
+mean that certification has passed or publication has begun.
 
 An advance `allowElevation` eligibility request was sent to Microsoft's
 documented contact, `reportapp@microsoft.com`, with the real product identity,
@@ -250,10 +262,11 @@ not validate the MSIX package's Windows-managed removal path.
 
 ## Partner Center handoff
 
-For the reserved **MSIX** product, use its exact assigned identity. A development
-candidate may be uploaded to the draft for server-side validation; submit the
-reviewed package for certification only after the capability/account and runtime
-gates are resolved.
+For the reserved **MSIX** product, use its exact assigned identity. The exact
+7.4.20 candidate progressed from draft package validation to a publisher-authorized
+certification submission with the pending approval and runtime limitations
+disclosed. This UI submission does not satisfy the local readiness attestations
+or establish Microsoft approval; unresolved evidence must remain pending.
 Complete the listing, age rating, screenshots, privacy/support links and reviewer
 instructions. Explain the retained recovery folder, intentional system changes,
 explicit UAC, startup control and how to test reversal. A draft/package upload and

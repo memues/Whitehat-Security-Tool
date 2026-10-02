@@ -1,11 +1,12 @@
 # Whitehat Security Tool: MSIX lifecycle review
 
-**A development MSIX can now be built. It is not cleared for Store submission or
-certified.** The package retains supported monitoring and explicit response
+**The 7.4.20 MSIX has been submitted for Microsoft review: In certification,
+Pre-processing in progress. It is not certified or published, and the local
+readiness attestations remain incomplete.** The package retains supported monitoring and explicit response
 functions. Microsoft Store signing remains the free distribution route, subject
 to Microsoft's restricted-capability decision and successful certification.
 
-## Confirmed Store draft identity
+## Confirmed Store identity
 
 | Field | Value |
 | --- | --- |
@@ -17,7 +18,7 @@ to Microsoft's restricted-capability decision and successful certification.
 | Expected package family name | `omni.apps.WhitehatSecurityTool_mhkhb0gkqyqq8` |
 | Current source architecture | x64 |
 
-A Store draft and assigned identity do not establish approval of `allowElevation`,
+An assigned identity or submitted package does not establish approval of `allowElevation`,
 the developer account's eligibility, package validity, or certification. Store
 submission status and external correspondence are tracked in
 [the submission guide](store-submission.md).
@@ -93,15 +94,22 @@ OS, administrator/standard users, startup/update, external changes/recovery,
 install/reset/uninstall, security/package validation, and listing/privacy. It
 records evidence hashes. These are review attestations, not independently
 authenticated Microsoft approvals. Leave every uncompleted item **Pending**;
-the default evidence file deliberately fails the submission gate. Actual Store
+the default evidence file deliberately fails the local readiness gate. Actual Store
 certification is a subsequent, separate decision by Microsoft.
 
 Uploading an unsigned package to the existing Partner Center **draft** for
 server-side package validation is a separate preparation step. A draft upload is
 not a certification submission, restricted-capability approval or publication.
-It must retain accurate pending status; do not select **Submit for certification**
-while the approval or technical release gates are unresolved. This build script
-performs neither a draft upload nor a certification submission.
+On 2 October 2026, after the limitations were explained, the publisher explicitly
+renewed the instruction to submit the existing 7.4.20 package for review through
+Partner Center. The observed status at **2026-10-02T03:34:25Z** was **In
+certification**, with Submission completed and Pre-processing in progress;
+Certification and Publishing were pending. This is an observation time, not the
+exact submission time. The local `StoreSubmission` check has not passed or been
+changed to bypass requirements, and pending attestations remain pending. The
+observed setting will start publishing if certification passes; it is not evidence
+of approval or publication. This build script performs neither a draft upload nor
+a certification submission.
 
 ## Lifecycle and validation matrix
 
@@ -130,7 +138,7 @@ tests do not by themselves satisfy the corresponding MSIX lifecycle checks.
 | Package updates | The packaged app bypasses the legacy self-install/update path; Store owns package files. | Verify update while running, version changes, preserved user decisions, compatible recovery records and rollback/relaunch without self-replacement. |
 | Package removal | Only the EXE uninstaller calls `CleanupManagedChanges`; a normal MSIX uninstall does not invoke that method automatically. | Obtain an acceptable lifecycle design for external system changes. Test removal from Windows Settings and Store with active rules/hosts/DNS changes; do not claim those changes are automatically reverted. |
 | Multiple users | Installation and some system changes are machine-wide; MSIX registration is commonly per user. | Define ownership/ref-count/conflict behavior before implementation. One user's removal must not erase another user's active configuration or leave recovery inaccessible. Test two accounts and elevation using separate credentials. |
-| Package and Store checks | The build script produces a semantically validated unsigned development MSIX and blocks submission review while evidence is pending. | Run applicable Windows package validation and this matrix in disposable VMs, then complete approval evidence, reviewer notes and actual Store certification. |
+| Package and Store checks | The build script produces a semantically validated unsigned development MSIX and rejects local readiness attestation while evidence is pending. The publisher separately submitted the existing package through Partner Center for review. | Run applicable Windows package validation and this matrix in disposable VMs, then complete approval evidence, reviewer notes and actual Store certification. |
 
 ## Questions that must precede final release
 
@@ -149,9 +157,10 @@ scenarios. Adding a service, sparse package or unvirtualized storage is also not
 an approved shortcut; each introduces additional deployment and permission issues.
 The development manifest proposes none of those capabilities.
 
-An advance capability reply is distinct from app certification. Only submit the
-actual package for certification once the approved design works, the listing is
-accurate, and installation/removal evidence supports the claims made to reviewers.
+An advance capability reply and a certification submission are each distinct from
+Microsoft's approval. The submitted package remains under review; the outstanding
+capability/account decision and runtime evidence are still required to establish
+release readiness. UI submission does not mark any of those requirements Verified.
 
 ## Official implementation references
 

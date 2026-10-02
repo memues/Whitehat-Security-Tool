@@ -71,18 +71,28 @@
     "CodeQL": "https://github.com/memues/Whitehat-Security-Tool/actions/runs/36955263318",
     "SecurityGate": "Passed after individual false-positive review; no rules or paths excluded"
   },
+  "AgeRatings": {
+    "IarcLegalAcceptance": "Explicitly accepted by publisher and saved",
+    "AdulthoodConfirmed": true,
+    "PublisherAndEmailSharingAccepted": true,
+    "SectionStatus": "Complete",
+    "ESRB": "Everyone",
+    "PEGI": "3+",
+    "CurrentRatingId": "Pending"
+  },
   "PackageValidation": {
     "NuGetAudit": "Passed",
     "EmbeddedNotices": "Passed",
     "MakeAppxSemanticValidation": "Passed",
     "PartnerCenterDraftUpload": "Complete with restricted-capability approval warning",
+    "AllDraftFormSectionsComplete": true,
+    "SubmitForCertificationButtonEnabled": true,
     "CertificationSubmitted": false
   },
   "Pending": [
     "Microsoft runFullTrust/allowElevation and Individual-account eligibility approval",
     "Minimum supported Windows version coverage",
     "Standard-user UAC, consent/cancellation and different-account elevation",
-    "Actual logon/startup and external-system-change recovery, DNS and multi-user ownership",
-    "IARC final legal acceptance"
+    "Actual logon/startup and external-system-change recovery, DNS and multi-user ownership"
   ]
 }

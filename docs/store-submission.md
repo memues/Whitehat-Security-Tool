@@ -23,8 +23,13 @@ worldwide pricing/availability are complete. English (United States) and Turkish
 captions each; both correctly identify the interface as English. Submission
 options include explicit restricted-capability justifications and reviewer notes.
 The unsigned 7.4.20 candidate is saved in the Store draft; package acceptance
-completed with a restricted-capability approval warning. The IARC preview
-returned ESRB Everyone and PEGI 3+; its final legal acceptance is pending.
+completed with a restricted-capability approval warning. The publisher explicitly
+accepted the IARC terms, confirmed adulthood and consented to publisher/email
+sharing; the acceptance was saved. Age ratings is now **Complete**, showing ESRB
+Everyone and PEGI 3+, while **Current Rating ID remains Pending**. All draft form
+sections are complete and **Submit for certification** is enabled, but it has not
+been selected. Microsoft capability/account approval and the remaining technical
+validation gates still apply.
 
 An advance `allowElevation` eligibility request was sent to Microsoft's
 documented contact, `reportapp@microsoft.com`, with the real product identity,

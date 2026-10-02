@@ -132,6 +132,21 @@ Run("DNS scripts target routed adapters and roll back failures", () =>
     AssertPowerShellParses(reset);
 });
 
+Run("PowerShell syntax validation rejects invalid scripts without executing input", () =>
+{
+    AssertPowerShellParses("throw 'Syntax validation must not execute this input.'");
+    try
+    {
+        AssertPowerShellParses("function Incomplete {");
+    }
+    catch (InvalidOperationException ex) when (
+        ex.Message.StartsWith("PowerShell parser rejected the generated script: ", StringComparison.Ordinal))
+    {
+        return;
+    }
+    throw new InvalidOperationException("The PowerShell parser accepted an incomplete function.");
+});
+
 #if !STORE_BUILD
 Run("Secure DNS configures both resolvers without destructive disable", () =>
 {
@@ -1573,10 +1588,11 @@ static void AssertPowerShellParses(string script)
             "[Console]::Error.WriteLine($_.Message)};exit 1}";
         using var process = Process.Start(new ProcessStartInfo
         {
-            FileName = "powershell.exe",
+            FileName = ElevationHelper.PowerShellPath,
             ArgumentList =
             {
                 "-NoProfile",
+                "-NonInteractive",
                 "-Command",
                 command,
             },
@@ -1585,15 +1601,21 @@ static void AssertPowerShellParses(string script)
             RedirectStandardError = true,
         }) ?? throw new InvalidOperationException(
             "Could not start the PowerShell parser.");
-        if (!process.WaitForExit(10_000))
+        // Drain diagnostics while the child runs: a malformed generated
+        // script must not block on a full stderr pipe. Hosted Windows runners
+        // can take over ten seconds to start Windows PowerShell cold, so use
+        // the same bounded launch budget as the other PowerShell test helpers.
+        var standardError = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(30_000))
         {
-            try { process.Kill(); } catch { }
+            try { process.Kill(entireProcessTree: true); process.WaitForExit(5_000); } catch { }
             throw new TimeoutException(
-                "PowerShell syntax check timed out.");
+                "PowerShell startup and syntax parsing did not complete within 30 seconds.");
         }
+        var errors = standardError.GetAwaiter().GetResult();
         if (process.ExitCode != 0)
             throw new InvalidOperationException(
-                process.StandardError.ReadToEnd());
+                "PowerShell parser rejected the generated script: " + errors);
     }
     finally
     {

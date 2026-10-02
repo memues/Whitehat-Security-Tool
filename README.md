@@ -7,6 +7,8 @@ For the separate Microsoft Store build, signing prerequisites, and validation,
 see [Store submission](docs/store-submission.md). An ordinary GitHub build is
 not a signed Store candidate. The Store build leaves DNS encryption to Windows
 Settings and cannot disable Windows Firewall profiles.
+Its registry rollback applies to Run/RunOnce startup entries; other Windows
+security settings remain observable and are managed through Windows controls.
 
 ## Screenshots
 

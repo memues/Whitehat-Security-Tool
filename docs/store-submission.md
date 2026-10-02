@@ -20,6 +20,13 @@ Simply wrapping this EXE in an MSIX would leave important functionality or clean
 unverified. The EXE route preserves the desktop installer and does not require
 claiming an elevation exception has been approved.
 
+The current development work is **not an MSIX conversion**. The selected direction
+is to preserve supported response functions while preparing free-signing and
+capability-eligibility inquiries. A monitoring-only edition has not been selected.
+No hosted signing acceptance, elevation approval, lifecycle compatibility or Store
+certification is implied by the EXE preparation work. Platform security protections
+and supported-API requirements still apply to every remediation path.
+
 ## Free signing options
 
 **Microsoft Store MSIX signing:** Microsoft signs certified MSIX packages, so this

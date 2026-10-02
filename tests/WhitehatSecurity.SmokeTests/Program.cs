@@ -851,6 +851,7 @@ Run("Quarantine does not follow junctions in an ancestor directory", () =>
     }
 });
 
+#if !STORE_BUILD
 Run("Registry rollback preserves value kind and rejects stale alerts", () =>
 {
     var testKeyPath =
@@ -918,6 +919,8 @@ Run("Registry rollback preserves value kind and rejects stale alerts", () =>
         catch { }
     }
 });
+
+#endif
 
 Run("Registry engine reports a Run-key change after its baseline", () =>
 {
@@ -1104,7 +1107,7 @@ Run("Alerts response controls fit the minimum dashboard size", () =>
             var payload = new RegistryChangePayload(
                 RegistryHive.CurrentUser,
                 RegistryView.Registry64,
-                @"Software\WhitehatSecurity\SmokeTests",
+                @"Software\Microsoft\Windows\CurrentVersion\Run",
                 "Value",
                 "changed",
                 new RegistryValueSnapshot(
@@ -1120,7 +1123,7 @@ Run("Alerts response controls fit the minimum dashboard size", () =>
                 Extra: new Dictionary<string, string>
                 {
                     ["RegistryPath"] =
-                        @"HKEY_CURRENT_USER\Software\WhitehatSecurity\SmokeTests",
+                        @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run",
                     [RegistryRollbackService.PayloadMetadataKey] =
                         payload.Encode(),
                 });
@@ -1402,6 +1405,7 @@ Run("RDP and Security event engines scan without throwing", () =>
 });
 
 InstallerStoreTests.Run(Run);
+RegistryStoreTests.Run(Run);
 
 Run("Embedded privacy policy is available offline", () =>
 {

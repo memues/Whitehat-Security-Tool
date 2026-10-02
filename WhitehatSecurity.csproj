@@ -11,7 +11,7 @@
     <RootNamespace>WhitehatSecurity</RootNamespace>
     <AssemblyName>WhitehatSecurity</AssemblyName>
     <AssemblyTitle>Whitehat Security Tool</AssemblyTitle>
-    <Version>7.4.19.0</Version>
+    <Version>7.4.20.0</Version>
     <Company>Whitehat Security</Company>
     <Product>Whitehat Security Tool</Product>
     <Description>Real-time Windows security monitoring tool — C# port</Description>

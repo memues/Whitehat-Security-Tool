@@ -14,6 +14,17 @@ using System.Text.Json;
 
 var failures = new List<string>();
 
+PackagedDataFolderTests.Run(Run);
+ServiceRecoveryTests.Run(Run);
+
+Run("Unpackaged smoke host retains the EXE lifecycle identity", () =>
+{
+    Equal(false, PackageRuntime.IsPackaged);
+    Equal<string?>(null, PackageRuntime.PackageFamilyName);
+    Equal("Global\\WhitehatSecurity-7.4-singleinstance",
+        PackageRuntime.GetInstanceObjectName("singleinstance"));
+});
+
 Run("ConsoleSink remains bounded and clears state", () =>
 {
     var sink = new ConsoleSink();

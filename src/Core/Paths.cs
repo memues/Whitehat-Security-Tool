@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Resolves the runtime data directory. Three cases:
+// Packaged copies first require an explicitly selected durable recovery
+// directory. They never use the desktop fallbacks below.
 //
 //   1. The .exe lives under %ProgramFiles% (the canonical install dir)
 //      → ALWAYS use %LOCALAPPDATA%\Whitehat Security\, even if the
@@ -38,8 +40,12 @@ public static class Paths
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Whitehat Security");
 
-    /// <summary>Where the program reads/writes its config and logs.</summary>
-    public static string DataDir { get; } = ResolveDataDir();
+    private static readonly Lazy<string> DesktopDataDir = new(ResolveDataDir);
+
+    /// <summary>Where the program reads/writes config, logs and recovery records.</summary>
+    public static string DataDir => PackageRuntime.IsPackaged
+        ? PackagedDataFolder.GetDataDirectory()
+        : DesktopDataDir.Value;
 
     public static string ConfigPath  => Path.Combine(DataDir, "notification_config.json");
     public static string LogsDir     => Path.Combine(DataDir, "Logs");

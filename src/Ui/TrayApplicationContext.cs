@@ -111,6 +111,8 @@ public sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add("Open Dashboard", null, (_, _) => OpenDashboard());
         menu.Items.Add("Alerts",         null, (_, _) => OpenDashboard("Alerts"));
         menu.Items.Add("Settings",       null, (_, _) => OpenDashboard("Settings"));
+        if (PackageRuntime.IsPackaged)
+            menu.Items.Add("Startup in Windows Settings", null, (_, _) => OpenStartupSettings());
         menu.Items.Add("Logs",           null, (_, _) => OpenDashboard("Logs"));
         menu.Items.Add("Console",        null, (_, _) => OpenDashboard("Console"));
         menu.Items.Add("Privacy Policy", null, (_, _) => OpenPrivacyPolicy());
@@ -124,6 +126,18 @@ public sealed class TrayApplicationContext : ApplicationContext
             ExitThread();
         });
         return menu;
+    }
+
+    private void OpenStartupSettings()
+    {
+        try { PackageRuntime.OpenStartupSettings(); }
+        catch (Exception ex)
+        {
+            _logger.Error($"Startup settings: {ex.Message}");
+            MessageBox.Show("Windows Startup Settings could not be opened.\n\n" +
+                "Open Windows Settings > Apps > Startup to enable or disable Whitehat Security Tool.",
+                Installer.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void OpenPrivacyPolicy()

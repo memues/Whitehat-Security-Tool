@@ -1,14 +1,15 @@
 # Microsoft Store preparation
 
-The current packaging implementation supports the **EXE installer** route. It is a WinForms
-desktop security monitor with explicit administrator actions, a standalone
-self-installer, and custom cleanup of its own firewall/hosts/DNS changes.
-The normal build remains available for direct distribution. The Store build is
-compiled with `StoreBuild=true` and keeps the restrictions documented in the app.
+Whitehat Security Tool is a WinForms desktop security monitor with explicit
+administrator actions. The repository now contains **MSIX development packaging
+and package-aware runtime behavior**, alongside the existing standalone EXE
+installer route. Supported response functions remain part of the product.
+The normal build remains available for direct distribution. Both Store packaging
+scripts compile with `StoreBuild=true` and retain the documented restrictions.
 
 The repository alone is **not a certified or submission-ready product**. An
-approved packaging/signing route, a verified release candidate and installation
-tests are still needed. No submission is performed by the build script.
+approved capability/account route, a verified release candidate and packaged
+installation tests are still needed. Neither packaging script submits a product.
 
 ## Approval status — 2 October 2026
 
@@ -16,8 +17,11 @@ The exact product name **Whitehat Security Tool** is reserved in Partner Center
 as an MSIX app, Store ID `9MTVDV7FSJDS`. Submission 1 is a draft, not a
 certification submission. Publisher display name: `omni.apps`; the current
 developer account type is **Individual**. The draft's category, privacy-policy
-URL, support links and x64 requirement have been saved; Properties is complete.
-No package has been uploaded.
+URL, support links and x64 requirement have been saved. Properties and free
+worldwide pricing/availability are complete. English (United States) and Turkish
+(Türkiye) listing text is saved; both correctly identify the interface as English.
+Screenshots and the final candidate are still being validated. The IARC preview
+returned ESRB Everyone and PEGI 3+; its final legal acceptance is pending.
 
 An advance `allowElevation` eligibility request was sent to Microsoft's
 documented contact, `reportapp@microsoft.com`, with the real product identity,
@@ -26,35 +30,58 @@ An eligibility inquiry was also sent to `support@signpath.io` for the Foundation
 free-signing route. Neither request constitutes approval, signing acceptance,
 or app certification. Both responses are pending.
 
-The [MSIX lifecycle review](msix-lifecycle-review.md) and manifest template record
-the reserved identity and the engineering/approval gates. The template is not a
-buildable or validated Store package. The EXE remains an alternative if an
-accepted free-signing workflow becomes available.
+The [MSIX lifecycle review](msix-lifecycle-review.md) records the reserved identity
+and validation questions. The manifest is now consumed by
+[`Build-MsixPackage.ps1`](../scripts/Build-MsixPackage.ps1), which supplies actual
+version/OS metadata and generated assets. A successful development build proves
+packaging checks passed; it does not establish runtime compatibility or Store
+approval. The EXE remains an alternative if an accepted free-signing workflow
+becomes available.
 
-## Why this is not an MSIX conversion
+## Implemented MSIX behavior and remaining validation
 
-MSIX would require replacing the first-run self-install prompt, custom uninstall,
-HKLM startup registration, and system-change cleanup with package-aware behavior.
-Runtime elevation would also require Microsoft's restricted-capability approval.
-Simply wrapping this EXE in an MSIX would leave important functionality or cleanup
-unverified. The EXE route preserves the desktop installer and does not require
-claiming an elevation exception has been approved.
+Windows package identity selects the runtime behavior; a build flag or directory
+name does not impersonate package identity. A packaged launch bypasses the EXE
+self-install prompt, refuses legacy install/uninstall commands, and uses separate
+package/user instance objects. The package declares an initially disabled startup
+task. A tray command opens Windows Startup Settings, where the user controls it;
+the packaged flow does not register the legacy HKLM startup entry.
 
-The current development work is **not an MSIX conversion**. The selected direction
-is to preserve supported response functions while awaiting free-signing and
-capability-eligibility responses. A monitoring-only edition has not been selected.
-No hosted signing acceptance, elevation approval, lifecycle compatibility or Store
-certification is implied by the EXE preparation work. Platform security protections
-and supported-API requirements still apply to every remediation path.
+The first interactive packaged launch asks the user to confirm or choose a local
+data/recovery directory outside AppData and the package. Logs, configuration,
+quarantined originals and service recovery journals remain in this folder after
+package reset/removal. Only a folder pointer lives in package-owned LocalState.
+After reset/reinstallation, selecting the existing folder reopens its records.
+Configured folders are not silently recreated if missing or replaced; a durable
+folder identity and path checks must pass. Network/removable drives, known
+OneDrive locations, system/app/temp directories, aliases and reparse paths are
+rejected. The first unattended launch exits until the user selects a folder.
+Response actions check that recovery storage is available before proceeding.
+The existing administrator-protected DNS backup remains in ProgramData; it is
+not moved into the user's writable recovery folder.
+
+MSIX removal does not call the EXE uninstaller's `CleanupManagedChanges` routine.
+Do not promise that removing the package automatically reverses intentional
+firewall, hosts, DNS, service or registry responses. The design preserves recovery
+records and exposes supported in-app reversal; the exact behavior, conflicts,
+multi-user ownership and reinstallation recovery need packaged VM evidence.
+The Store's clean-uninstall rule does not explicitly require unconditional
+rollback of every user-directed system change, but that is not an app-specific
+acceptance decision. The proposed design must still satisfy Microsoft's review.
+
+Minimum-OS behavior, real package activation/elevation, Windows startup/update,
+observation of actual machine state, and install/reset/removal are outstanding
+verification gates. A monitoring-only edition has not been selected. Platform
+protection and supported-API restrictions apply to every response function.
 
 ## Free signing options
 
 **Microsoft Store MSIX signing:** Microsoft signs certified MSIX packages, so this
-route does not require buying a CA certificate. For Whitehat, it would require
-package-aware installation, startup, storage and cleanup, plus either removing
-the elevated system-changing features from that edition or obtaining Microsoft's
-strictly reviewed elevation approval. This is a separate adaptation; the current
-EXE package cannot receive that free MSIX signing. See Microsoft's
+route does not require buying a CA certificate. Whitehat's implemented MSIX
+adaptation retains user-directed elevated functions and therefore requires
+Microsoft's strictly reviewed `allowElevation` approval, plus validation of the
+package lifecycle described above. Its standalone EXE cannot receive this free
+MSIX signing. See Microsoft's
 [signing guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/publish-first-app)
 and [elevation rules](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/app-capability-declarations).
 
@@ -83,7 +110,46 @@ Microsoft's all-PE signing requirement. No formal application or signing account
 has been created. A preliminary inquiry has been sent; the
 [application page](https://signpath.org/apply.html) is a reference for formal onboarding.
 
-## Build the signed standalone installer
+## Build an MSIX development candidate
+
+Prerequisites: Windows, PowerShell 7, the exact SDK selected by `global.json`, and
+Windows SDK MakeAppx. Development mode creates an unsigned package for isolated
+testing; it neither installs a trust certificate nor uploads the package.
+
+```powershell
+pwsh -NoProfile -File .\scripts\Build-MsixPackage.ps1 -Mode Development
+```
+
+Use `-DotNetPath`, `-MakeAppxPath` and `-OutputDirectory` to select local tools and
+output. The script checks the reserved identity, uses a distinct output directory
+for each run, generates logo assets, and invokes MakeAppx with semantic validation
+enabled. The output includes the unsigned `.msix`, tool logs, payload hashes,
+`candidate-record.json` and a pending review-evidence file. The default OS metadata
+targets Windows 10 build 19041; the minimum supported and maximum tested versions
+must be justified by actual testing, not inferred from successful packaging.
+
+The script's `StoreSubmission` mode verifies that the original candidate hash
+matches a completed review-evidence file and its referenced evidence documents:
+
+```powershell
+pwsh -NoProfile -File .\scripts\Build-MsixPackage.ps1 -Mode StoreSubmission `
+  -CandidateRecordPath 'PATH_TO_CANDIDATE_RECORD' `
+  -ReviewEvidencePath 'PATH_TO_COMPLETED_REVIEW_EVIDENCE'
+```
+
+This records human review attestations; it cannot authenticate Microsoft's
+approval or certify the app. Leave uncompleted reviews pending. Do not edit a
+pending field to `Verified` solely because a source build or MakeAppx succeeded.
+
+Test the exact candidate in disposable Windows VMs: first manual and silent
+launch, standard-user UAC with separate administrator credentials, explicit
+response/undo, offline operation, startup opt-in/out, update, reset and removal.
+Include retained quarantine/journals, a missing or replaced recovery folder,
+unrelated system changes, and reopening the folder after reinstall. Preserve the
+original unsigned candidate and its hash when preparing a separately test-signed
+copy for sideload testing. Store certification must evaluate the actual candidate.
+
+## Alternative: build the signed standalone installer
 
 Prerequisites:
 
@@ -119,7 +185,7 @@ inventory, and silent switches. The intermediate payload directory is retained
 for independent signature inspection. Do not upload an ordinary unsigned publish
 output or claim that signing the outer EXE alone verifies its embedded assemblies.
 
-## Validate before submission
+## Validate the EXE alternative before submission
 
 Run the smoke tests for the Store build:
 
@@ -151,9 +217,19 @@ machine containing an existing Whitehat installation or security settings to kee
    exact commands, exit codes, and observed results in the release evidence.
 
 A source build or smoke-test pass does not substitute for those installation and
-certification checks. MSIX's automatic uninstall guarantees do not apply here.
+certification checks. The EXE uninstaller has its own lifecycle; its results do
+not validate the MSIX package's Windows-managed removal path.
 
 ## Partner Center handoff
+
+For the reserved **MSIX** product, use its exact assigned identity and upload the
+reviewed package only after the capability/account and runtime gates are resolved.
+Complete the listing, age rating, screenshots, privacy/support links and reviewer
+instructions. Explain the retained recovery folder, intentional system changes,
+explicit UAC, startup control and how to test reversal. A draft/package upload and
+restricted-capability approval are each distinct from final app certification.
+
+For an accepted **EXE alternative**, use the appropriate Win32 submission route:
 
 - Create or select the correct developer-owned Win32 product and publisher.
 - Host the signed EXE at a versioned direct HTTPS URL. Never replace the binary
@@ -177,5 +253,9 @@ new Store submission; keep the in-app/direct-download update instructions accura
 - [MSI/EXE package requirements](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msi/app-package-requirements)
 - [Manual MSI/EXE package validation](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msi/manual-package-validation)
 - [Restricted capabilities and elevation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/app-capability-declarations)
+- [Packaged desktop runtime and virtualization](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes)
+- [Durable user data versus package-owned app data](https://learn.microsoft.com/en-us/windows/apps/develop/data/store-and-retrieve-app-data)
+- [Flexible virtualization and writable locations](https://learn.microsoft.com/en-us/windows/msix/desktop/flexible-virtualization)
+- [Microsoft Store policies 7.19](https://learn.microsoft.com/en-us/windows/apps/publish/store-policy-archive/store-policy-7-19)
 - [.NET single-file signing extension points](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview#post-processing-binaries-before-bundling)
 - [Distribution paths](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/choose-distribution-path)

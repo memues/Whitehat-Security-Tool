@@ -115,25 +115,72 @@ public static class ServiceRemediationService
             return new ServiceRemediationResult(
                 false, "This service is protected from automatic deactivation.");
 
-        var encoded = state!.Encode();
-        var rc = ElevationHelper.RunSelfElevated(
-            $"--disable-alert-service {encoded}", logger, 45_000);
+        if (!PackagedDataFolder.TryEnsureAvailable(out error))
+            return new ServiceRemediationResult(false, error);
+        try
+        {
+            return ExecuteDisableWithRecovery(state!, Paths.RemediationDir,
+                encoded => ElevationHelper.RunSelfElevated(
+                    $"--disable-alert-service {encoded}", logger, 45_000));
+        }
+        catch (Exception ex)
+        {
+            return new ServiceRemediationResult(false,
+                "The service was not changed because recovery storage could not be prepared. " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Writes and verifies the original state before invoking an elevated action.
+    /// The explicit directory and action also allow inert tests of the durability
+    /// boundary without accessing or modifying a Windows service.
+    /// </summary>
+    public static ServiceRemediationResult ExecuteDisableWithRecovery(
+        ServiceStatePayload state, string recoveryDirectory, Func<string, int> action)
+    {
+        if (!ServiceStatePayload.IsValidServiceName(state.ServiceName)
+            || state.StartMode is < 0 or > 4 || ProtectedServices.Contains(state.ServiceName))
+            return new ServiceRemediationResult(false, "This service state is not eligible for deactivation.");
+        string restorePayload;
+        try
+        {
+            restorePayload = PrepareRestoreState(recoveryDirectory, state);
+        }
+        catch (Exception ex)
+        {
+            return new ServiceRemediationResult(false,
+                "The service was not changed because its recovery journal could not be saved. " + ex.Message);
+        }
+
+        if (!PackagedDataFolder.TryEnsureAvailable(out var storageError))
+            return new ServiceRemediationResult(false, storageError, restorePayload);
+        int rc;
+        try { rc = action(state.Encode()); }
+        catch (Exception ex)
+        {
+            return new ServiceRemediationResult(false,
+                "Service deactivation failed. Its recovery record was retained because the outcome may be partial. " + ex.Message,
+                restorePayload);
+        }
+        // A timeout or launcher failure can happen after the helper has started.
+        // Retain the prewritten record on every outcome; a cancelled operation
+        // can retry the same state without replacing the original evidence.
         return rc switch
         {
             0 => new ServiceRemediationResult(
                 true,
-                SaveRestoreState(state, out var journalWarning)
-                    ? "The service was stopped where possible and disabled. A loaded driver may require a restart to unload."
-                    : "The service was disabled, but its persistent restore journal could not be saved. Keep this application open if you may need to restore it. " + journalWarning,
-                encoded),
+                "The service was stopped where possible and disabled. Its original state was saved before the change. A loaded driver may require a restart to unload.",
+                restorePayload),
             ExitProtectedService => new ServiceRemediationResult(
-                false, "This service is protected from automatic deactivation."),
+                false, "This service is protected from automatic deactivation. Its recovery record was retained.", restorePayload),
             ExitServiceChanged => new ServiceRemediationResult(
-                false, "The service path changed during confirmation. The action was cancelled."),
-            -2 or -3 => new ServiceRemediationResult(
-                false, "Administrator approval was cancelled or unavailable."),
+                false, "The service path changed during confirmation. The action was cancelled; its recovery record was retained.", restorePayload),
+            -2 => new ServiceRemediationResult(
+                false, "Service deactivation timed out and may be partial. Its recovery record was retained.", restorePayload),
+            -3 => new ServiceRemediationResult(
+                false, "Administrator approval was cancelled or the helper failed. Its recovery record was retained.", restorePayload),
             _ => new ServiceRemediationResult(
-                false, $"Service deactivation failed (exit {rc})."),
+                false, $"Service deactivation failed (exit {rc}). Its recovery record was retained.", restorePayload),
         };
     }
 
@@ -148,7 +195,7 @@ public static class ServiceRemediationService
         if (rc == 0)
         {
             if (ServiceStatePayload.TryDecode(encoded, out var state))
-                TryDeleteJournal(state!.ServiceName);
+                TryDeleteJournal(state!.ServiceName, encoded);
             return new ServiceRemediationResult(
                 true, "The original service start mode and running state were restored.");
         }
@@ -314,7 +361,7 @@ public static class ServiceRemediationService
         {
             var path = JournalPath(serviceName);
             if (!File.Exists(path)) return null;
-            var encoded = File.ReadAllText(path).Trim();
+            var encoded = ReadJournal(path);
             return ServiceStatePayload.TryDecode(
                     encoded, out var state)
                 && string.Equals(
@@ -327,39 +374,83 @@ public static class ServiceRemediationService
         catch { return null; }
     }
 
-    private static bool SaveRestoreState(
-        ServiceStatePayload state, out string warning)
+    private static string PrepareRestoreState(string directory, ServiceStatePayload state)
     {
-        warning = "";
+        if (!Path.IsPathFullyQualified(directory) || ThreatPath.ContainsReparsePoint(directory))
+            throw new IOException("The recovery journal directory is not a direct local path.");
+        Directory.CreateDirectory(directory);
+        if (ThreatPath.ContainsReparsePoint(directory))
+            throw new IOException("The recovery journal directory changed to a link or junction.");
+        var path = GetJournalPath(directory, state.ServiceName);
+        if (File.Exists(path))
+        {
+            var existing = ReadJournal(path);
+            if (!ServiceStatePayload.TryDecode(existing, out var saved)
+                || !string.Equals(saved!.ServiceName, state.ServiceName, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(saved.ImagePath, state.ImagePath, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("An incompatible recovery record already exists. It was not overwritten.");
+            if (saved.StartMode != state.StartMode || saved.WasRunning != state.WasRunning)
+            {
+                if (state.StartMode != 4)
+                    throw new IOException("A different original service state is already saved. Restore or review it before another deactivation.");
+            }
+            // Repeated deactivation must preserve the original enabled state,
+            // rather than replacing it with the already-disabled state.
+            return existing;
+        }
+
+        if (ThreatPath.ContainsReparsePoint(path))
+            throw new IOException("The recovery record is a link or junction.");
+        var encoded = state.Encode();
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            Directory.CreateDirectory(Paths.RemediationDir);
-            var path = JournalPath(state.ServiceName);
-            var temp = path + ".tmp";
-            File.WriteAllText(temp, state.Encode());
-            File.Move(temp, path, overwrite: true);
-            return true;
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                var bytes = Encoding.UTF8.GetBytes(encoded);
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+            // A competing writer's original record must not be replaced.
+            File.Move(temporary, path, overwrite: false);
+            if (!string.Equals(ReadJournal(path), encoded, StringComparison.Ordinal))
+                throw new IOException("The saved service recovery record did not pass read-back verification.");
+            return encoded;
         }
-        catch (Exception ex)
-        {
-            warning = ex.Message;
-            return false;
-        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private static void TryDeleteJournal(string serviceName)
+    private static string ReadJournal(string path)
     {
-        try { File.Delete(JournalPath(serviceName)); } catch { }
+        if (ThreatPath.ContainsReparsePoint(path)) throw new IOException("Recovery records must not pass through links or junctions.");
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length > 1024 * 1024) throw new IOException("The service recovery record is too large.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd().Trim();
+    }
+
+    private static void TryDeleteJournal(string serviceName, string restoredPayload)
+    {
+        try
+        {
+            var path = JournalPath(serviceName);
+            if (string.Equals(ReadJournal(path), restoredPayload, StringComparison.Ordinal))
+                File.Delete(path);
+        }
+        catch { }
     }
 
     private static string JournalPath(string serviceName)
+        => GetJournalPath(Paths.RemediationDir, serviceName);
+
+    private static string GetJournalPath(string directory, string serviceName)
     {
         var hash = Convert.ToHexString(
             SHA256.HashData(
                 Encoding.UTF8.GetBytes(
                     serviceName.ToUpperInvariant())));
         return Path.Combine(
-            Paths.RemediationDir,
+            directory,
             "service-" + hash + ".state");
     }
 

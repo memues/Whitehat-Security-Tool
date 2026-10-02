@@ -31,10 +31,6 @@ namespace WhitehatSecurity;
 
 internal static class Program
 {
-    private const string MutexName = "Global\\WhitehatSecurity-7.4-singleinstance";
-    private const string ShowEventName =
-        "Global\\WhitehatSecurity-7.4-show-dashboard";
-
     /// <summary>
     /// UTC start time of the process. Captured at the very top of Main so
     /// the Status page can show "Started: HH:mm:ss" relative to when the
@@ -48,9 +44,9 @@ internal static class Program
     private static int Main(string[] args)
     {
         // Even failures before normal mode dispatch must stay unattended.
-        bool quiet = HasFlag(args, "--quiet", "-Quiet");
+        bool quiet = HasFlag(args, "--quiet", "-Quiet", "--silent", "-Silent");
         // Wrap the entire entry point so interactive startup failures
-        // surface as a MessageBox. Quiet setup receives only an exit code.
+        // surface as a MessageBox. Quiet setup/background startup return an exit code.
         // The v7.2.0
         // bug was a Logger constructor crash that left zero diagnostic
         // information for the user; never letting that happen again.
@@ -90,6 +86,17 @@ internal static class Program
             return InstallerExitCodes.InvalidParameter;
 
         // Setup is handled before any dashboard or first-run initialization.
+        // Windows deployment owns MSIX installation and removal. Never let a
+        // packaged command invoke the legacy system-wide self-installer.
+        if (PackageRuntime.IsPackaged && (install || uninstall))
+        {
+            if (!quiet)
+                MessageBox.Show(
+                    "Windows manages this Microsoft Store installation.\n\n" +
+                    "Use Windows Settings > Apps to remove it, or Microsoft Store to update it.",
+                    Installer.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return InstallerExitCodes.InvalidParameter;
+        }
         if (install) return RunInstall(quiet, autostart, setupParentProcessId);
         if (uninstall) return RunUninstall(quiet, setupParentProcessId);
 
@@ -115,10 +122,16 @@ internal static class Program
             return ServiceRemediationService.ApplyRestoreEncoded(
                 restoreAlertService);
 
+        // Recovery data must remain available after Windows removes a package.
+        // A first silent startup exits until the user has chosen its data folder.
+        if (PackageRuntime.IsPackaged
+            && !PackagedDataFolder.Initialize(interactive: !silent && !quiet))
+            return InstallerExitCodes.Cancelled;
+
         // ── First-run install prompt ────────────────────────────────────
         // Done BEFORE acquiring the mutex so the launched installed copy
         // does not race with this process for mutex ownership.
-        if (!silent && !Installer.IsRunningFromInstallDir())
+        if (!PackageRuntime.IsPackaged && !silent && !Installer.IsRunningFromInstallDir())
         {
             string? prompt = null;
             bool alreadyInstalled = Installer.IsAlreadyInstalled();
@@ -212,9 +225,11 @@ internal static class Program
         }
 
         // ── Single-instance mutex ───────────────────────────────────────
-        using var mutex = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
+        using var mutex = new Mutex(initiallyOwned: true,
+            PackageRuntime.GetInstanceObjectName("singleinstance"), out bool createdNew);
         using var showEvent = new EventWaitHandle(
-            false, EventResetMode.AutoReset, ShowEventName);
+            false, EventResetMode.AutoReset,
+            PackageRuntime.GetInstanceObjectName("show-dashboard"));
         if (!createdNew)
         {
             try { showEvent.Set(); } catch { }

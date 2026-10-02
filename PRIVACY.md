@@ -24,8 +24,17 @@ addresses, registry values, and information needed to undo a change. Quarantine
 moves a file into local storage and records its original path, hash, and time so
 it can be restored; the file's contents remain on your device.
 
-For an installed copy, the usual data folder is
-%LOCALAPPDATA%\Whitehat Security. Portable copies use their executable directory
+For a Microsoft Store/MSIX copy, the first interactive launch asks you to
+confirm or choose a local data folder outside package storage. The suggested
+location is %USERPROFILE%\Whitehat Security Tool Data. Configuration, logs,
+quarantine and recovery records remain there after package reset or removal.
+Only the folder pointer is kept in the package's LocalState directory. After
+reset or reinstallation, select the same data folder to reopen existing records.
+The app refuses to use an unavailable folder or silently fall back to temporary
+storage. Choose a private folder that is not shared or synced to a cloud service.
+
+For a standalone EXE installed copy, the usual data folder is
+%LOCALAPPDATA%\Whitehat Security. Portable EXE copies use their executable directory
 when writable, otherwise the local application data folder, with
 %TEMP%\WhitehatSecurity as a final fallback. A DNS configuration backup is stored
 under %PROGRAMDATA%\Whitehat Security with administrator access restrictions.
@@ -85,6 +94,12 @@ manually. Deleting quarantine permanently removes its recoverable contents;
 deleting remediation records can remove information needed to undo changes.
 An administrator may need to review any remaining DNS backup before removing it.
 Uninstall does not erase exports you saved elsewhere.
+
+Removing the MSIX package does not automatically reverse security or network
+changes you explicitly applied, such as firewall rules, hosts entries, DNS or
+service settings. Review and undo supported changes in the app before removal,
+or reinstall it and reopen the retained data folder to use its recovery records.
+System changes may also be managed through the corresponding Windows settings.
 
 ## Questions and policy updates
 

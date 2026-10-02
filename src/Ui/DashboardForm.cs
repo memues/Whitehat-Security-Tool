@@ -929,6 +929,7 @@ public sealed partial class DashboardForm : Form
 
     private async void OnRemediateClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         var alert = _selectedAlert;
         if (alert is null || !CanRemediate(alert)) return;
         var state = GetAlertActionState(alert);
@@ -942,6 +943,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
 
             SetAlertActionsEnabled(false);
             var deletion = await Task.Run(
@@ -967,6 +969,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
 
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
@@ -992,16 +995,20 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
 
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
                 () => ServiceRemediationService.Disable(
                     serviceName, _logger));
             state.Status = result.Message;
+            // A partial failure or timeout can still have changed the service.
+            // Keep the durable pre-action restore state available in that case.
+            if (result.RestorePayload is not null)
+                state.ServiceRestorePayload = result.RestorePayload;
             if (result.Success)
             {
                 state.Mitigated = true;
-                state.ServiceRestorePayload = result.RestorePayload;
             }
             SetAlertActionsEnabled(true);
             RefreshAlertPresentation(alert);
@@ -1017,6 +1024,7 @@ public sealed partial class DashboardForm : Form
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning);
         if (quarantineAnswer != DialogResult.Yes) return;
+        if (!RequireRecoveryFolder()) return;
 
         SetAlertActionsEnabled(false);
         var quarantine = await Task.Run(
@@ -1033,6 +1041,7 @@ public sealed partial class DashboardForm : Form
 
     private async void OnUndoRemediationClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         var alert = _selectedAlert;
         if (alert is null) return;
         var state = GetAlertActionState(alert);
@@ -1046,6 +1055,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
                 () => QuarantineManager.Restore(state.Quarantine));
@@ -1064,6 +1074,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
                 () => ServiceRemediationService.Restore(
@@ -1084,6 +1095,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
             SetAlertActionsEnabled(false);
             var rc = await Task.Run(
                 () => ElevationHelper.UnblockIpAddress(
@@ -1104,6 +1116,7 @@ public sealed partial class DashboardForm : Form
 
     private async void OnBlockIpClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         var alert = _selectedAlert;
         if (alert?.RemoteIp is not string ip) return;
         var result = MessageBox.Show(
@@ -1111,6 +1124,7 @@ public sealed partial class DashboardForm : Form
             "Block IP - Confirm",
             MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (result != DialogResult.Yes) return;
+        if (!RequireRecoveryFolder()) return;
 
         SetAlertActionsEnabled(false);
         int rc = await Task.Run(
@@ -1135,12 +1149,14 @@ public sealed partial class DashboardForm : Form
 
     private void OnKillProcessClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         if (_selectedAlert?.ProcessId is not int pid || pid <= 0) return;
         var result = MessageBox.Show(
             $"Terminate {_selectedAlert.ProcessName ?? "?"} (PID {pid})?\n\nA UAC prompt will appear if needed.",
             "Kill Process - Confirm",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (result != DialogResult.Yes) return;
+        if (!RequireRecoveryFolder()) return;
 
         try
         {
@@ -1165,6 +1181,7 @@ public sealed partial class DashboardForm : Form
         }
         catch
         {
+            if (!RequireRecoveryFolder()) return;
             int rc = ElevationHelper.KillProcessElevated(pid, _logger);
             if (rc == 0)
                 MarkAlertMitigated(
@@ -1204,6 +1221,17 @@ public sealed partial class DashboardForm : Form
         }
         _alertActionStates[alert] = state;
         return state;
+    }
+
+    private bool RequireRecoveryFolder()
+    {
+        if (!PackageRuntime.IsPackaged || PackagedDataFolder.TryEnsureAvailable(out var error))
+            return true;
+        MessageBox.Show(this,
+            "The response was cancelled because the app's recovery folder is unavailable.\n\n" +
+            error + "\n\nRestore access to the original folder and restart the app before trying again.",
+            "Recovery folder unavailable", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        return false;
     }
 
     private bool CanInspect(Alert alert)
@@ -1504,6 +1532,11 @@ public sealed partial class DashboardForm : Form
 #else
         var hadDoh = _config.DNS_DoH;
 #endif
+        if (!RequireRecoveryFolder())
+        {
+            RevertDnsCombo(cmb, previousProvider);
+            return;
+        }
         var disabledPreviousDoh = false;
         cmb.Enabled = false;
         if (_dnsApplyButton is not null)
@@ -1656,6 +1689,11 @@ public sealed partial class DashboardForm : Form
     private async Task<bool> TogglePrivilegedAsync(
         CheckBox cb, Action persist, Func<int> action)
     {
+        if (!RequireRecoveryFolder())
+        {
+            SetCheckedWithoutHandler(cb, !cb.Checked);
+            return false;
+        }
         cb.Enabled = false;
         int rc;
         try { rc = await Task.Run(action); }

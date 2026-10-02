@@ -140,17 +140,43 @@ public static class RegistryRollbackService
     public const int ExitConflict = 10;
     public const int ExitInvalidPayload = 11;
     public const int ExitFailure = 12;
+    public const int ExitUnsupportedPolicy = 13;
+    private const string UnsupportedPolicyMessage =
+        "This edition supports registry rollback only for Windows Run and RunOnce startup entries. " +
+        "Restore other Windows settings with their supported Windows controls.";
+
+    /// <summary>
+    /// Exact startup-key allowlist for the Store edition. Do not normalize
+    /// separators or trim input: alternate spellings must not widen it.
+    /// </summary>
+    public static bool IsStoreRollbackPath(string? keyPath)
+        => string.Equals(keyPath, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                StringComparison.OrdinalIgnoreCase)
+            || string.Equals(keyPath, @"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
+                StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedRollback(RegistryChangePayload payload)
+    {
+#if STORE_BUILD
+        return IsStoreRollbackPath(payload.KeyPath);
+#else
+        return true;
+#endif
+    }
 
     public static bool CanRollback(Alert alert)
         => alert.Extra is not null
             && alert.Extra.TryGetValue(
                 PayloadMetadataKey, out var encoded)
-            && RegistryChangePayload.TryDecode(encoded, out _);
+            && RegistryChangePayload.TryDecode(encoded, out var payload)
+            && IsSupportedRollback(payload!);
 
     public static string Inspect(Alert alert)
     {
         if (!TryGetPayload(alert, out _, out var payload))
             return "This alert does not contain typed registry change metadata.";
+        if (!IsSupportedRollback(payload!))
+            return UnsupportedPolicyMessage;
 
         try
         {
@@ -177,6 +203,11 @@ public static class RegistryRollbackService
             return new RegistryRollbackResult(
                 false, false, "Typed rollback metadata is unavailable.");
 
+        // Reject unsupported targets before requesting elevation or reading
+        // the registry, including payloads loaded from older alert history.
+        if (!IsSupportedRollback(payload!))
+            return FromExitCode(ExitUnsupportedPolicy);
+
         if (payload!.Hive == RegistryHive.LocalMachine)
         {
             var rc = ElevationHelper.RunSelfElevated(
@@ -196,6 +227,8 @@ public static class RegistryRollbackService
     {
         if (!RegistryChangePayload.TryDecode(encoded, out var payload))
             return ExitInvalidPayload;
+        if (!IsSupportedRollback(payload!))
+            return ExitUnsupportedPolicy;
         try
         {
             var current = CaptureCurrent(payload!);
@@ -273,6 +306,8 @@ public static class RegistryRollbackService
             ExitConflict => new RegistryRollbackResult(
                 false, true,
                 "Rollback cancelled: the current value changed again after this alert."),
+            ExitUnsupportedPolicy => new RegistryRollbackResult(
+                false, false, UnsupportedPolicyMessage),
             -2 or -3 => new RegistryRollbackResult(
                 false, false, "Administrator approval was cancelled or unavailable."),
             _ => new RegistryRollbackResult(

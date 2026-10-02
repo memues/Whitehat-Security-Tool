@@ -14,6 +14,17 @@ using System.Text.Json;
 
 var failures = new List<string>();
 
+PackagedDataFolderTests.Run(Run);
+ServiceRecoveryTests.Run(Run);
+
+Run("Unpackaged smoke host retains the EXE lifecycle identity", () =>
+{
+    Equal(false, PackageRuntime.IsPackaged);
+    Equal<string?>(null, PackageRuntime.PackageFamilyName);
+    Equal("Global\\WhitehatSecurity-7.4-singleinstance",
+        PackageRuntime.GetInstanceObjectName("singleinstance"));
+});
+
 Run("ConsoleSink remains bounded and clears state", () =>
 {
     var sink = new ConsoleSink();
@@ -121,6 +132,22 @@ Run("DNS scripts target routed adapters and roll back failures", () =>
     AssertPowerShellParses(reset);
 });
 
+Run("PowerShell syntax validation rejects invalid scripts without executing input", () =>
+{
+    AssertPowerShellParses("throw 'Syntax validation must not execute this input.'");
+    try
+    {
+        AssertPowerShellParses("function Incomplete {");
+    }
+    catch (InvalidOperationException ex) when (
+        ex.Message.StartsWith("PowerShell parser rejected the generated script: ", StringComparison.Ordinal))
+    {
+        return;
+    }
+    throw new InvalidOperationException("The PowerShell parser accepted an incomplete function.");
+});
+
+#if !STORE_BUILD
 Run("Secure DNS configures both resolvers without destructive disable", () =>
 {
     var enable = DnsConfiguration.BuildDohScript(
@@ -175,6 +202,8 @@ Run("Secure DNS switches the adapter, not just the server catalogue", () =>
     AssertPowerShellParses(reset);
 });
 
+#endif
+
 Run("DNS and Secure DNS cover IPv6 where IPv6 actually routes", () =>
 {
     var apply = DnsConfiguration.BuildProviderScript("Cloudflare");
@@ -187,12 +216,14 @@ Run("DNS and Secure DNS cover IPv6 where IPv6 actually routes", () =>
     Contains("-DestinationPrefix '::/0'", apply);
     Contains("-AddressFamily IPv6", apply);
 
+#if !STORE_BUILD
     var enable = DnsConfiguration.BuildDohScript(true, "Cloudflare");
     Contains("$addresses6 = @('2606:4700:4700::1111','2606:4700:4700::1001')",
         enable);
     // IPv6 DoH lives under Doh6, not Doh.
     Contains(@"'Doh6'", enable);
     Contains("-AddressFamily IPv6", enable);
+#endif
 
     // Both families roll back together, and the snapshot has to record the
     // IPv6 family or a failed apply would restore only half the state.
@@ -212,7 +243,9 @@ Run("DNS and Secure DNS cover IPv6 where IPv6 actually routes", () =>
     Equal(false, managed.Contains("2620:119:35::35"));
 
     AssertPowerShellParses(apply);
+#if !STORE_BUILD
     AssertPowerShellParses(enable);
+#endif
 });
 
 Run("Every engine category has a settings toggle", () =>
@@ -413,8 +446,10 @@ Run("Uninstall cleanup restores automatic DNS and both DoH resolvers", () =>
 
     // Deciding from ServerAddresses alone pinned the DHCP-supplied
     // resolvers as a static configuration on uninstall.
-    Contains("if ([bool]$adapter.Automatic)", script);
+    Contains("Restore-WhsDnsSnapshot -Snapshot $saved", script);
+    Contains("ServerAddressesV6", script);
 
+#if !STORE_BUILD
     // v7.4.3 started configuring the secondary resolver for DoH but the
     // cleanup list still only named the primaries.
     foreach (var address in new[]
@@ -432,6 +467,10 @@ Run("Uninstall cleanup restores automatic DNS and both DoH resolvers", () =>
     // Per-interface encrypted-DNS keys outlive a plain DNS reset, so the
     // uninstaller has to delete them too.
     Contains("DohInterfaceSettings", script);
+#else
+    DoesNotContain("DohInterfaceSettings", script);
+    DoesNotContain("Remove-DnsClientDohServerAddress", script);
+#endif
 
     AssertPowerShellParses(script);
 });
@@ -838,6 +877,7 @@ Run("Quarantine does not follow junctions in an ancestor directory", () =>
     }
 });
 
+#if !STORE_BUILD
 Run("Registry rollback preserves value kind and rejects stale alerts", () =>
 {
     var testKeyPath =
@@ -905,6 +945,8 @@ Run("Registry rollback preserves value kind and rejects stale alerts", () =>
         catch { }
     }
 });
+
+#endif
 
 Run("Registry engine reports a Run-key change after its baseline", () =>
 {
@@ -1091,7 +1133,7 @@ Run("Alerts response controls fit the minimum dashboard size", () =>
             var payload = new RegistryChangePayload(
                 RegistryHive.CurrentUser,
                 RegistryView.Registry64,
-                @"Software\WhitehatSecurity\SmokeTests",
+                @"Software\Microsoft\Windows\CurrentVersion\Run",
                 "Value",
                 "changed",
                 new RegistryValueSnapshot(
@@ -1107,7 +1149,7 @@ Run("Alerts response controls fit the minimum dashboard size", () =>
                 Extra: new Dictionary<string, string>
                 {
                     ["RegistryPath"] =
-                        @"HKEY_CURRENT_USER\Software\WhitehatSecurity\SmokeTests",
+                        @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run",
                     [RegistryRollbackService.PayloadMetadataKey] =
                         payload.Encode(),
                 });
@@ -1388,6 +1430,88 @@ Run("RDP and Security event engines scan without throwing", () =>
     }
 });
 
+InstallerStoreTests.Run(Run);
+RegistryStoreTests.Run(Run);
+
+Run("Embedded privacy policy is available offline", () =>
+{
+    Contains("IPinfo", PrivacyNotice.Read());
+    Contains("DNS", PrivacyNotice.Read());
+});
+
+Run("Production assembly exposes the application license and complete dependency notices offline", () =>
+{
+    var notices = LicenseNotices.Read();
+    Contains("Copyright (c) 2026 memues", notices);
+    Contains("Permission is hereby granted, free of charge", notices);
+    Contains("Copyright (c) .NET Foundation and Contributors", notices);
+    Contains("PACKAGE: System.Management/", notices);
+
+    // Source comparison catches an omitted or truncated embedded document,
+    // while the attribution checks also work from a copied test artifact.
+    var root = FindRepositoryRoot();
+    if (root is not null)
+    {
+        foreach (var fileName in new[] { "LICENSE", "THIRD-PARTY-NOTICES.txt" })
+        {
+            var completeSource = File.ReadAllText(Path.Combine(root, fileName)).TrimEnd();
+            if (!notices.Contains(completeSource, StringComparison.Ordinal))
+                throw new InvalidOperationException($"The embedded offline notices do not contain the complete {fileName}.");
+        }
+    }
+});
+
+Run("Uninstall DNS rollback restores mixed IPv4 and IPv6 state", () =>
+{
+    var cleanup = ElevationHelper.BuildCleanupScript();
+    var start = cleanup.IndexOf("function Restore-WhsDnsSnapshot", StringComparison.Ordinal);
+    var end = cleanup.IndexOf("function Assert-WhsDnsAddresses", start, StringComparison.Ordinal);
+    var restoreFunction = cleanup[start..end];
+    var mock = """
+$ErrorActionPreference = 'Stop'
+$script:calls = [System.Collections.Generic.List[object]]::new()
+function Get-NetAdapter { param($InterfaceIndex, $ErrorAction) [pscustomobject]@{ InterfaceIndex = $InterfaceIndex } }
+function Set-DnsClientServerAddress {
+    param($InterfaceIndex, [switch]$ResetServerAddresses, $ServerAddresses, $ErrorAction)
+    $script:calls.Add([pscustomobject]@{ Reset = [bool]$ResetServerAddresses; Addresses = @($ServerAddresses) })
+}
+""" + "\n" + restoreFunction + """
+Restore-WhsDnsSnapshot -Snapshot @([pscustomobject]@{
+    InterfaceIndex = 7; Automatic = $true; ServerAddresses = @('192.0.2.1')
+    AutomaticV6 = $false; ServerAddressesV6 = @('2001:db8::53','2001:db8::54')
+})
+if ($script:calls.Count -ne 2 -or -not $script:calls[0].Reset) { exit 1 }
+if (($script:calls[1].Addresses -join ',') -ne '2001:db8::53,2001:db8::54') { exit 2 }
+$script:calls.Clear()
+Restore-WhsDnsSnapshot -Snapshot @([pscustomobject]@{
+    InterfaceIndex = 7; Automatic = $false; ServerAddresses = @('192.0.2.53')
+    AutomaticV6 = $false; ServerAddressesV6 = @('2001:db8::53')
+})
+if (($script:calls[1].Addresses -join ',') -ne '192.0.2.53,2001:db8::53') { exit 3 }
+exit 0
+""";
+    Equal(0, RunPowerShellArguments(ElevationHelper.BuildInlineArguments(mock)));
+});
+
+#if STORE_BUILD
+Run("Store build refuses disabling platform protection and unsupported DNS writes", () =>
+{
+    Equal(-5, ElevationHelper.SetFirewallProfile("Domain", false));
+    Equal(-5, ElevationHelper.SetFirewallProfile("Private", false));
+    Equal(-5, ElevationHelper.SetFirewallProfile("Public", false));
+    Equal(-5, ElevationHelper.SetDnsOverHttps(true, "Cloudflare"));
+    Equal(-5, ElevationHelper.SetDnsOverHttps(false, "Cloudflare"));
+    Throws(() => DnsConfiguration.BuildDohScript(true, "Cloudflare"));
+    foreach (var provider in DnsConfiguration.ProviderNames)
+    {
+        var script = DnsConfiguration.BuildProviderScript(provider);
+        DoesNotContain("DohInterfaceSettings", script);
+        DoesNotContain("Remove-WhsDohInterface", script);
+        AssertPowerShellParses(script);
+    }
+});
+#endif
+
 if (failures.Count > 0)
 {
     Console.Error.WriteLine($"{failures.Count} smoke test(s) failed:");
@@ -1464,10 +1588,11 @@ static void AssertPowerShellParses(string script)
             "[Console]::Error.WriteLine($_.Message)};exit 1}";
         using var process = Process.Start(new ProcessStartInfo
         {
-            FileName = "powershell.exe",
+            FileName = ElevationHelper.PowerShellPath,
             ArgumentList =
             {
                 "-NoProfile",
+                "-NonInteractive",
                 "-Command",
                 command,
             },
@@ -1476,15 +1601,21 @@ static void AssertPowerShellParses(string script)
             RedirectStandardError = true,
         }) ?? throw new InvalidOperationException(
             "Could not start the PowerShell parser.");
-        if (!process.WaitForExit(10_000))
+        // Drain diagnostics while the child runs: a malformed generated
+        // script must not block on a full stderr pipe. Hosted Windows runners
+        // can take over ten seconds to start Windows PowerShell cold, so use
+        // the same bounded launch budget as the other PowerShell test helpers.
+        var standardError = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(30_000))
         {
-            try { process.Kill(); } catch { }
+            try { process.Kill(entireProcessTree: true); process.WaitForExit(5_000); } catch { }
             throw new TimeoutException(
-                "PowerShell syntax check timed out.");
+                "PowerShell startup and syntax parsing did not complete within 30 seconds.");
         }
+        var errors = standardError.GetAwaiter().GetResult();
         if (process.ExitCode != 0)
             throw new InvalidOperationException(
-                process.StandardError.ReadToEnd());
+                "PowerShell parser rejected the generated script: " + errors);
     }
     finally
     {

@@ -194,6 +194,9 @@ public static class DnsConfiguration
         bool enabled,
         string providerName)
     {
+#if STORE_BUILD
+        throw new NotSupportedException("Configure encrypted DNS in Windows Settings.");
+#else
         if (!TryGetProvider(providerName, out var provider)
             || provider?.DohTemplate is null)
             throw new ArgumentOutOfRangeException(
@@ -210,13 +213,20 @@ public static class DnsConfiguration
                 .Replace("__PRIMARY__", provider.PrimaryIpv4)
                 .Replace("__SECONDARY__", provider.SecondaryIpv4)
                 .Replace("__DOH_TEMPLATE__", provider.DohTemplate);
+#endif
     }
 
     // Prefer interfaces that actually own a live default IPv4 route. This
     // avoids Hyper-V Default Switch and other "Up" virtual adapters that
     // reject Set-DnsClientServerAddress. The physical-adapter fallback keeps
     // the feature useful while a default route is briefly being renewed.
-    private const string CommonPowerShell = """
+    internal const string CommonPowerShell = DnsCommonPowerShell
+#if !STORE_BUILD
+        + DohInterfacePowerShell
+#endif
+        + DnsVerificationPowerShell;
+
+    private const string DnsCommonPowerShell = """
 
 function Get-WhsDnsTargetIndices {
     $upAdapters = @(Get-NetAdapter -ErrorAction Stop |
@@ -350,6 +360,10 @@ function Assert-WhsDnsAddresses {
     }
 }
 
+""";
+
+    private const string DohInterfacePowerShell = """
+
 # Per-interface DNS-over-HTTPS. Add-DnsClientDohServerAddress only fills the
 # machine-wide catalogue of "servers known to speak DoH"; it does NOT switch
 # an adapter to encrypted DNS. Windows decides that from
@@ -462,6 +476,10 @@ function Assert-WhsDohInterfaceCleared {
     }
 }
 
+""";
+
+    private const string DnsVerificationPowerShell = """
+
 function Assert-WhsDnsAutomatic {
     param([int] $InterfaceIndex, [string[]] $Families = @('IPv4','IPv6'))
     $adapter = Get-NetAdapter -InterfaceIndex $InterfaceIndex `
@@ -475,6 +493,20 @@ function Assert-WhsDnsAutomatic {
 }
 
 """;
+
+    private const string ClearDohInterfacePowerShell =
+#if STORE_BUILD
+        "";
+#else
+        "Remove-WhsDohInterface -InterfaceIndices $targets\n";
+#endif
+
+    private const string VerifyDohClearedPowerShell =
+#if STORE_BUILD
+        "";
+#else
+        "foreach ($index in $targets) { Assert-WhsDohInterfaceCleared -InterfaceIndex $index }\n";
+#endif
 
     private const string ApplyProviderPowerShell = """
 $targets = @(Get-WhsDnsTargetIndices)
@@ -516,7 +548,7 @@ try {
     # The previous provider's per-interface DoH entries name resolvers that
     # are no longer configured. Encrypted DNS is re-applied afterwards by the
     # DoH script when the user has it switched on.
-    Remove-WhsDohInterface -InterfaceIndices $targets
+""" + "\n" + ClearDohInterfacePowerShell + """
     Clear-DnsClientCache -ErrorAction Stop
 } catch {
     $failure = $_
@@ -553,11 +585,19 @@ try {
             foreach ($item in $saved) {
                 if ([bool]$item.Automatic) {
                     Assert-WhsDnsAutomatic `
-                        -InterfaceIndex ([int]$item.InterfaceIndex)
+                        -InterfaceIndex ([int]$item.InterfaceIndex) -Families @('IPv4')
                 } else {
                     Assert-WhsDnsAddresses `
                         -InterfaceIndex ([int]$item.InterfaceIndex) `
                         -Expected @($item.ServerAddresses)
+                }
+                if ($null -eq $item.PSObject.Properties['AutomaticV6'] -or [bool]$item.AutomaticV6) {
+                    Assert-WhsDnsAutomatic `
+                        -InterfaceIndex ([int]$item.InterfaceIndex) -Families @('IPv6')
+                } else {
+                    Assert-WhsDnsAddresses `
+                        -InterfaceIndex ([int]$item.InterfaceIndex) `
+                        -Expected @($item.ServerAddressesV6) -AddressFamily IPv6
                 }
             }
         } else {
@@ -578,10 +618,7 @@ try {
     }
     # Going back to automatic DNS must also drop encrypted-DNS entries;
     # otherwise Windows keeps them pinned to resolvers we no longer set.
-    Remove-WhsDohInterface -InterfaceIndices $targets
-    foreach ($index in $targets) {
-        Assert-WhsDohInterfaceCleared -InterfaceIndex $index
-    }
+""" + "\n" + ClearDohInterfacePowerShell + VerifyDohClearedPowerShell + """
     Clear-DnsClientCache -ErrorAction Stop
 } catch {
     $failure = $_

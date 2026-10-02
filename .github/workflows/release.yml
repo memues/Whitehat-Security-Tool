@@ -24,7 +24,7 @@ jobs:
       - name: Set up .NET 8
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: "8.0.x"
+          global-json-file: global.json
 
       - name: Verify tag matches application version
         shell: pwsh
@@ -38,6 +38,10 @@ jobs:
 
       - name: Restore
         run: dotnet restore tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -p:Configuration=Release -r win-x64 -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -warnaserror:NU1901,NU1902,NU1903,NU1904
+
+      - name: Verify bundled dependency notices
+        shell: pwsh
+        run: ./scripts/Update-ThirdPartyNotices.ps1 -Check
 
       - name: Run smoke tests
         run: dotnet run --project tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -c Release --no-restore
@@ -67,4 +71,4 @@ jobs:
             --verify-tag `
             --latest `
             --generate-notes `
-            --title "Whitehat Security $env:GITHUB_REF_NAME"
+            --title "Whitehat Security Tool $env:GITHUB_REF_NAME"

@@ -5,8 +5,8 @@
 //
 // Install location: %ProgramFiles%\Whitehat Security\WhitehatSecurity.exe
 // Add/Remove key:   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WhitehatSecurity
-// Start menu link:  %ProgramData%\Microsoft\Windows\Start Menu\Programs\Whitehat Security.lnk
-// Desktop link:     %PUBLIC%\Desktop\Whitehat Security.lnk
+// Start menu link:  %ProgramData%\Microsoft\Windows\Start Menu\Programs\Whitehat Security Tool.lnk
+// Desktop link:     %PUBLIC%\Desktop\Whitehat Security Tool.lnk
 //
 // All file copies and registry writes happen elevated. Self-deletion of the
 // installed binary during uninstall uses an inline, encoded Windows
@@ -16,15 +16,19 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Security.Principal;
 using Microsoft.Win32;
 
 namespace WhitehatSecurity.Core;
 
 public static class Installer
 {
-    public const string ProductName    = "Whitehat Security";
+    public const string ProductName    = "Whitehat Security Tool";
     public const string Publisher      = "Whitehat Security";
     public const string AppId          = "WhitehatSecurity";
+    // Keep the existing installation/data identity so upgrades replace the
+    // same copy. Only presentation and shortcut names use ProductName.
+    private const string LegacyProductName = "Whitehat Security";
 
     /// <summary>
     /// Read from the assembly rather than hard-coded. The constant used to be
@@ -49,7 +53,7 @@ public static class Installer
     public static string DefaultInstallDir =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            ProductName);
+            LegacyProductName);
 
     public static string DefaultInstallExePath =>
         Path.Combine(DefaultInstallDir, "WhitehatSecurity.exe");
@@ -77,15 +81,42 @@ public static class Installer
             Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
             ProductName + ".lnk");
 
+    private static void DeleteLegacyShortcuts(Logger? logger)
+    {
+        foreach (var shortcut in new[] { StartMenuShortcut, PublicDesktopShortcut, UserDesktopShortcut })
+        {
+            var directory = Path.GetDirectoryName(shortcut);
+            if (!string.IsNullOrEmpty(directory))
+                DeleteShortcut(Path.Combine(directory, LegacyProductName + ".lnk"), logger);
+        }
+    }
+
     /// <summary>
-    /// Where Windows looks for system-wide auto-start entries. The installer
-    /// writes a value here pointing at the installed exe with --silent so
-    /// that the program comes up as a tray icon (no dashboard) at every
-    /// logon. Same convention used by most installed Windows apps.
+    /// Where Windows looks for system-wide auto-start entries. A new entry
+    /// is written only after explicit --autostart consent. Upgrades leave
+    /// the existing entry and Windows Startup preferences unchanged.
     /// </summary>
     public const string RunKeyPath =
         @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     public const string RunValueName = "WhitehatSecurity";
+
+    public static bool IsElevated()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    public static bool IsInstalledImagePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            return string.Equals(Path.GetFullPath(path),
+                Path.GetFullPath(DefaultInstallExePath), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException) { return false; }
+        catch (NotSupportedException) { return false; }
+    }
 
     /// <summary>
     /// Returns true when the running .exe lives inside the canonical install
@@ -94,16 +125,7 @@ public static class Installer
     /// </summary>
     public static bool IsRunningFromInstallDir()
     {
-        var current = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(current)) return false;
-        try
-        {
-            return string.Equals(
-                Path.GetFullPath(current),
-                Path.GetFullPath(DefaultInstallExePath),
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch { return false; }
+        return IsInstalledImagePath(Environment.ProcessPath);
     }
 
     public static bool IsAlreadyInstalled()
@@ -179,8 +201,10 @@ public static class Installer
     /// registers in Add/Remove Programs, and creates Start Menu and Public
     /// Desktop shortcuts. Must be called from an elevated process.
     /// </summary>
-    public static void InstallElevated(Logger? logger = null)
+    public static void InstallElevated(Logger? logger = null, bool enableAutostart = false,
+        int setupParentProcessId = 0)
     {
+        RequireElevation();
         var src = Environment.ProcessPath
             ?? throw new InvalidOperationException("Cannot determine current exe path");
         var dstDir = DefaultInstallDir;
@@ -192,7 +216,7 @@ public static class Installer
         // which swaps the file on disk but leaves the OLD build running and
         // still holding the tray icon — so the user saw "installed 7.4.3"
         // while 7.4.1 kept monitoring. Stop the installed instances first.
-        StopInstalledInstances(logger);
+        StopInstalledInstances(logger, setupParentProcessId);
 
         // Copy the binary to a temp name then atomically swap it into place.
         // We try plain Move first; if the destination is locked (the previous
@@ -230,7 +254,7 @@ public static class Installer
         // with no checkbox left to clear it.
         var retired = ElevationHelper.RemoveRetiredFirewallRules(logger);
         if (retired != 0)
-            logger?.Warn($"Retired firewall rule cleanup exited {retired}");
+            throw new InvalidOperationException($"Retired firewall rule cleanup failed (exit {retired}).");
         else
             logger?.Info("Checked for retired firewall rules");
 
@@ -242,23 +266,21 @@ public static class Installer
         // up regardless of OneDrive Known Folder Move state. The installer
         // also drops one in the Common Desktop and the Common Start Menu so
         // every user on the machine sees it.
-        try { CreateShortcut(StartMenuShortcut,     dstExe); } catch (Exception ex) { logger?.Warn($"Start menu shortcut: {ex.Message}"); }
-        try { CreateShortcut(PublicDesktopShortcut, dstExe); } catch (Exception ex) { logger?.Warn($"Public desktop shortcut: {ex.Message}"); }
-        try { CreateShortcut(UserDesktopShortcut,   dstExe); } catch (Exception ex) { logger?.Warn($"User desktop shortcut: {ex.Message}"); }
+        CreateShortcut(StartMenuShortcut, dstExe);
+        CreateShortcut(PublicDesktopShortcut, dstExe);
+        CreateShortcut(UserDesktopShortcut, dstExe);
+        // Replace old display names only after the new links are available.
+        DeleteLegacyShortcuts(logger);
 
-        // Auto-start at logon. The Run key is the standard mechanism for
-        // installed Windows apps; the --silent flag keeps the dashboard
-        // closed so it just shows up in the system tray, the way every
-        // other security tool does.
-        try
+        // Do not re-enable startup on updates: Windows Startup settings may
+        // have disabled the existing entry. An explicit command is consent
+        // to create/update the Run value, but never clears StartupApproved.
+        if (enableAutostart)
         {
             using var run = Registry.LocalMachine.CreateSubKey(RunKeyPath, writable: true);
-            run?.SetValue(RunValueName, $"\"{dstExe}\" --silent", RegistryValueKind.String);
+            if (run is null) throw new InvalidOperationException("Cannot create startup key.");
+            run.SetValue(RunValueName, $"\"{dstExe}\" --silent", RegistryValueKind.String);
             logger?.Info("Auto-start at logon enabled (HKLM Run key)");
-        }
-        catch (Exception ex)
-        {
-            logger?.Warn($"Auto-start: {ex.Message}");
         }
     }
 
@@ -267,51 +289,45 @@ public static class Installer
     /// skipping this process. Matching is by full image path, so a portable
     /// copy running from Downloads is never touched.
     /// </summary>
-    private static void StopInstalledInstances(Logger? logger)
+    private static void StopInstalledInstances(Logger? logger, int setupParentProcessId)
     {
-        string installedExe;
-        try { installedExe = Path.GetFullPath(DefaultInstallExePath); }
-        catch { return; }
-        if (!File.Exists(installedExe)) return;
+        if (!File.Exists(DefaultInstallExePath)) return;
 
         var self = Environment.ProcessId;
-        Process[] candidates;
-        try { candidates = Process.GetProcessesByName("WhitehatSecurity"); }
-        catch (Exception ex)
-        {
-            logger?.Warn($"Process enumeration failed: {ex.Message}");
-            return;
-        }
+        var candidates = Process.GetProcessesByName("WhitehatSecurity");
+        var failures = new System.Collections.Generic.List<Exception>();
 
         foreach (var process in candidates)
         {
             try
             {
-                if (process.Id == self) continue;
+                // The unelevated setup launcher must remain alive to return
+                // this elevated child's exit code to the Store/caller.
+                if (process.Id == self || process.Id == setupParentProcessId) continue;
                 string? path = null;
                 try { path = process.MainModule?.FileName; }
                 catch { /* exited or inaccessible — skip it */ }
-                if (path is null
-                    || !string.Equals(
-                        Path.GetFullPath(path),
-                        installedExe,
-                        StringComparison.OrdinalIgnoreCase))
+                if (!IsInstalledImagePath(path))
                     continue;
                 logger?.Info(
-                    $"Stopping installed instance PID {process.Id} before upgrade");
+                    $"Stopping installed instance PID {process.Id} for setup");
                 process.Kill(entireProcessTree: false);
-                process.WaitForExit(5000);
+                if (!process.WaitForExit(5000))
+                    throw new TimeoutException($"Installed process {process.Id} did not exit.");
             }
             catch (Exception ex)
             {
                 logger?.Warn(
                     $"Could not stop PID {process.Id}: {ex.Message}");
+                failures.Add(ex);
             }
             finally
             {
                 try { process.Dispose(); } catch { }
             }
         }
+        if (failures.Count != 0)
+            throw new AggregateException("Could not stop the installed application.", failures);
     }
 
     private static void WriteUninstallKey(string installedExe, string installDir)
@@ -376,114 +392,53 @@ public static class Installer
     // ========================================================================
 
     /// <summary>
-    /// Removes the installed copy, registry entry, and shortcuts. Must be
-    /// called from an elevated process. Schedules a self-delete batch script
-    /// because the running .exe (which lives at the install path) cannot
-    /// delete itself.
+    /// Removes the installed copy, registry entry, and shortcuts. Returns
+    /// true when the final file/registration cleanup must wait for this
+    /// executable to exit. User settings, logs and recovery records remain.
     /// </summary>
-    public static void UninstallElevated(Logger? logger = null)
+    public static bool UninstallElevated(Logger? logger = null, int setupParentProcessId = 0)
     {
-        // Step 0 — kill every running WhitehatSecurity.exe instance EXCEPT
-        // ourselves (the uninstaller). The auto-start tray instance has the
-        // installed .exe open, so File.Delete would fail without this. We
-        // skip the current process so we can finish the uninstall script
-        // and schedule our own self-delete.
-        try
-        {
-            int self = Environment.ProcessId;
-            var others = Process.GetProcessesByName("WhitehatSecurity");
-            foreach (var p in others)
-            {
-                try
-                {
-                    if (p.Id == self) { p.Dispose(); continue; }
-                    logger?.Info($"Stopping running instance PID {p.Id}");
-                    p.Kill(entireProcessTree: false);
-                    p.WaitForExit(3000);
-                }
-                catch (Exception ex)
-                {
-                    logger?.Warn($"Could not stop PID {p.Id}: {ex.Message}");
-                }
-                finally
-                {
-                    try { p.Dispose(); } catch { }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger?.Warn($"Process enumeration failed: {ex.Message}");
-        }
+        RequireElevation();
+        StopInstalledInstances(logger, setupParentProcessId);
 
         var cleanupCode = ElevationHelper.CleanupManagedChanges(logger);
         if (cleanupCode != 0)
-            logger?.Warn(
-                $"Managed firewall/hosts/DNS cleanup exited {cleanupCode}");
-
-        // Best-effort: delete the registry entry first so the entry vanishes
-        // from Apps & Features even if file removal fails for any reason.
-        try
-        {
-            Registry.LocalMachine.DeleteSubKeyTree(UninstallKeyPath, throwOnMissingSubKey: false);
-            logger?.Info("Removed Add/Remove Programs entry");
-        }
-        catch (Exception ex) { logger?.Warn($"Registry delete: {ex.Message}"); }
+            throw new InvalidOperationException(
+                $"Managed firewall/hosts/DNS cleanup failed (exit {cleanupCode}). " +
+                "The application remains registered so removal can be retried.");
 
         // Auto-start Run key
-        try
+        using (var run = Registry.LocalMachine.OpenSubKey(RunKeyPath, writable: true))
         {
-            using var run = Registry.LocalMachine.OpenSubKey(RunKeyPath, writable: true);
             if (run is not null && run.GetValue(RunValueName) is not null)
             {
                 run.DeleteValue(RunValueName, throwOnMissingValue: false);
                 logger?.Info("Removed auto-start Run key");
             }
         }
-        catch (Exception ex) { logger?.Warn($"Run key delete: {ex.Message}"); }
 
         // Shortcuts
-        TryDelete(StartMenuShortcut,     logger);
-        TryDelete(PublicDesktopShortcut, logger);
-        TryDelete(UserDesktopShortcut,   logger);
+        DeleteShortcut(StartMenuShortcut, logger);
+        DeleteShortcut(PublicDesktopShortcut, logger);
+        DeleteShortcut(UserDesktopShortcut, logger);
+        DeleteLegacyShortcuts(logger);
 
-        // Per-user data dir under %LOCALAPPDATA% — config, logs, baselines.
-        // v7.3.x left this behind on uninstall, which meant a reinstall
-        // picked up the previous user's settings (notably toast on/off,
-        // notification category state). Removing it makes a reinstall
-        // start from a true fresh state with the v7.3.2+ defaults.
-        try
-        {
-            if (Directory.Exists(Paths.UserDataDir))
-            {
-                Directory.Delete(Paths.UserDataDir, recursive: true);
-                logger?.Info($"Removed user data dir {Paths.UserDataDir}");
-            }
-        }
-        catch (Exception ex) { logger?.Warn($"User data dir delete: {ex.Message}"); }
+        // Keep user-authored settings, diagnostic logs and remediation
+        // recovery journals. Silent setup must not destroy those records.
+        logger?.Info($"Retained user data at {Paths.UserDataDir}");
 
-        var installedExe = DefaultInstallExePath;
         var installDir   = DefaultInstallDir;
 
         // If we're not the installed exe, just delete the install dir directly
-        var current = Environment.ProcessPath ?? "";
-        bool selfIsInstalled = string.Equals(
-            Path.GetFullPath(current),
-            Path.GetFullPath(installedExe),
-            StringComparison.OrdinalIgnoreCase);
-
-        if (!selfIsInstalled)
+        if (!IsRunningFromInstallDir())
         {
-            try
+            if (Directory.Exists(installDir))
             {
-                if (Directory.Exists(installDir))
-                {
-                    Directory.Delete(installDir, recursive: true);
-                    logger?.Info($"Removed {installDir}");
-                }
+                Directory.Delete(installDir, recursive: true);
+                logger?.Info($"Removed {installDir}");
             }
-            catch (Exception ex) { logger?.Warn($"Install dir delete: {ex.Message}"); }
-            return;
+            Registry.LocalMachine.DeleteSubKeyTree(UninstallKeyPath, throwOnMissingSubKey: false);
+            return false;
         }
 
         // Keep the delayed command in the child process arguments. A batch
@@ -493,38 +448,76 @@ public static class Installer
         var psi = new ProcessStartInfo
         {
             FileName        = ElevationHelper.PowerShellPath,
-            Arguments       = BuildSelfDeleteArguments(installDir),
+            Arguments       = BuildSelfDeleteArguments(
+                installDir, Environment.ProcessId, removeUninstallRegistration: true,
+                waitForLauncherProcessId: setupParentProcessId),
             UseShellExecute = false,
             CreateNoWindow  = true,
             WindowStyle     = ProcessWindowStyle.Hidden,
         };
-        Process.Start(psi);
+        using var helper = Process.Start(psi)
+            ?? throw new InvalidOperationException("Could not start final uninstall cleanup.");
         // The caller (Program.Main) returns immediately after this and the
         // process exits, freeing the file lock so the helper can delete us.
+        // The helper keeps Apps & Features registered if file deletion fails.
+        return true;
     }
 
-    public static string BuildSelfDeleteArguments(string installDir)
+    public static string BuildSelfDeleteArguments(
+        string installDir, int waitForProcessId = 0, bool removeUninstallRegistration = false,
+        int waitForLauncherProcessId = 0)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(waitForProcessId);
+        ArgumentOutOfRangeException.ThrowIfNegative(waitForLauncherProcessId);
         var fullPath = Path.GetFullPath(installDir);
         if (string.Equals(fullPath.TrimEnd('\\', '/'),
                 Path.GetPathRoot(fullPath)?.TrimEnd('\\', '/'),
                 StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Cannot remove a drive root.", nameof(installDir));
+        // Only the canonical installation can request machine registration
+        // removal; test callers use an inert temporary directory.
+        if (removeUninstallRegistration && !string.Equals(
+                fullPath.TrimEnd('\\', '/'), DefaultInstallDir.TrimEnd('\\', '/'),
+                StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Uninstall registration belongs to the installation directory.", nameof(installDir));
+
+        var wait = BuildWaitForProcessScript(waitForProcessId)
+            + BuildWaitForProcessScript(waitForLauncherProcessId);
+        var unregister = removeUninstallRegistration
+            ? "[Microsoft.Win32.Registry]::LocalMachine.DeleteSubKeyTree('" + UninstallKeyPath + "', $false)\r\n"
+            : "";
         return ElevationHelper.BuildInlineArguments(
-            "Start-Sleep -Seconds 2\r\n" +
-            "[System.IO.Directory]::Delete(" + ElevationHelper.BuildPathExpression(fullPath) + ", $true)\r\n");
+            "$ErrorActionPreference = 'Stop'\r\n" + wait +
+            "$directory = " + ElevationHelper.BuildPathExpression(fullPath) + "\r\n" +
+            // Retrying handles transient antivirus/indexer file handles.
+            "for ($attempt = 0; $attempt -lt 30; $attempt++) {\r\n" +
+            "    try {\r\n" +
+            "        if ([System.IO.Directory]::Exists($directory)) { [System.IO.Directory]::Delete($directory, $true) }\r\n" +
+            "        break\r\n" +
+            "    } catch {\r\n" +
+            "        if ($attempt -eq 29) { exit 1603 }\r\n" +
+            "        Start-Sleep -Milliseconds 500\r\n" +
+            "    }\r\n" +
+            "}\r\n" + unregister + "exit 0\r\n");
     }
 
-    private static void TryDelete(string path, Logger? logger)
+    private static string BuildWaitForProcessScript(int processId) => processId == 0 ? "" :
+        "$parent = $null\r\n" +
+        $"try {{ $parent = [System.Diagnostics.Process]::GetProcessById({processId}) }} catch [System.ArgumentException] {{ }}\r\n" +
+        "if ($null -ne $parent) { try { $parent.WaitForExit() } finally { $parent.Dispose() } }\r\n";
+
+    private static void DeleteShortcut(string path, Logger? logger)
     {
-        try
+        if (File.Exists(path))
         {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-                logger?.Info($"Removed {path}");
-            }
+            File.Delete(path);
+            logger?.Info($"Removed {path}");
         }
-        catch (Exception ex) { logger?.Warn($"Delete {path}: {ex.Message}"); }
+    }
+
+    private static void RequireElevation()
+    {
+        if (!IsElevated())
+            throw new System.ComponentModel.Win32Exception(InstallerExitCodes.ElevationRequired);
     }
 }

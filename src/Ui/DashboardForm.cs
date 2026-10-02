@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -28,7 +29,7 @@ public sealed partial class DashboardForm : Form
     private readonly ConsoleSink   _consoleSink;
     private readonly string        _configPath;
     /// <summary>
-    /// Live MonitorHost instance — used by the AI Threats page so a Scan
+    /// Live MonitorHost instance — used by the Behavioural Scan page so a Scan
     /// Now click reuses the engines that already hold a baseline (instead
     /// of creating fresh ones every click, which produced spurious
     /// "every running process is suspicious" floods in v7.3.4).
@@ -584,7 +585,7 @@ public sealed partial class DashboardForm : Form
     private System.Threading.CancellationTokenSource? _aiScanCts;
 
     /// <summary>
-    /// AI Threats "Scan Now" button. Runs the three on-demand engines via
+    /// Behavioural Scan "Scan Now" button. Runs the three on-demand engines via
     /// MonitorHost.RunOneShotAsync against the LIVE engine instances that
     /// already hold a baseline — this avoids the v7.3.4 bug where every
     /// click recreated MemoryScannerEngine without a baseline and flooded
@@ -825,9 +826,25 @@ public sealed partial class DashboardForm : Form
     private void OnIpLookupClick(object? sender, EventArgs e)
     {
         if (_selectedAlert?.RemoteIp is not string ip) return;
+        if (!IPAddress.TryParse(ip, out var address))
+        {
+            MessageBox.Show(this, "This alert does not contain a valid IP address.",
+                "IP Lookup", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var canonicalIp = address.ToString();
+        if (MessageBox.Show(this,
+            $"Open IPinfo in your browser to look up {canonicalIp}?\n\n" +
+            "IPinfo will receive this IP address, your browser connection's " +
+            "public IP address, and normal browser request information. " +
+            "Its privacy policy is at https://ipinfo.io/privacy-policy.\n\n" +
+            "No other alert details are sent. Choose No to cancel without contacting IPinfo.",
+            "Share IP address with IPinfo?", MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
         try
         {
-            Process.Start(new ProcessStartInfo("https://ipinfo.io/" + ip)
+            Process.Start(new ProcessStartInfo("https://ipinfo.io/" + Uri.EscapeDataString(canonicalIp))
             {
                 UseShellExecute = true,
             });
@@ -912,6 +929,7 @@ public sealed partial class DashboardForm : Form
 
     private async void OnRemediateClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         var alert = _selectedAlert;
         if (alert is null || !CanRemediate(alert)) return;
         var state = GetAlertActionState(alert);
@@ -925,6 +943,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
 
             SetAlertActionsEnabled(false);
             var deletion = await Task.Run(
@@ -950,6 +969,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
 
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
@@ -975,16 +995,20 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
 
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
                 () => ServiceRemediationService.Disable(
                     serviceName, _logger));
             state.Status = result.Message;
+            // A partial failure or timeout can still have changed the service.
+            // Keep the durable pre-action restore state available in that case.
+            if (result.RestorePayload is not null)
+                state.ServiceRestorePayload = result.RestorePayload;
             if (result.Success)
             {
                 state.Mitigated = true;
-                state.ServiceRestorePayload = result.RestorePayload;
             }
             SetAlertActionsEnabled(true);
             RefreshAlertPresentation(alert);
@@ -1000,6 +1024,7 @@ public sealed partial class DashboardForm : Form
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning);
         if (quarantineAnswer != DialogResult.Yes) return;
+        if (!RequireRecoveryFolder()) return;
 
         SetAlertActionsEnabled(false);
         var quarantine = await Task.Run(
@@ -1016,6 +1041,7 @@ public sealed partial class DashboardForm : Form
 
     private async void OnUndoRemediationClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         var alert = _selectedAlert;
         if (alert is null) return;
         var state = GetAlertActionState(alert);
@@ -1029,6 +1055,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
                 () => QuarantineManager.Restore(state.Quarantine));
@@ -1047,6 +1074,7 @@ public sealed partial class DashboardForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
             SetAlertActionsEnabled(false);
             var result = await Task.Run(
                 () => ServiceRemediationService.Restore(
@@ -1062,11 +1090,12 @@ public sealed partial class DashboardForm : Form
         {
             var blockedIp = state.BlockedIp;
             var answer = MessageBox.Show(
-                $"Remove Whitehat Security firewall rules for {blockedIp}?",
+                $"Remove {Installer.ProductName} firewall rules for {blockedIp}?",
                 "Unblock IP - Confirm",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
             if (answer != DialogResult.Yes) return;
+            if (!RequireRecoveryFolder()) return;
             SetAlertActionsEnabled(false);
             var rc = await Task.Run(
                 () => ElevationHelper.UnblockIpAddress(
@@ -1087,6 +1116,7 @@ public sealed partial class DashboardForm : Form
 
     private async void OnBlockIpClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         var alert = _selectedAlert;
         if (alert?.RemoteIp is not string ip) return;
         var result = MessageBox.Show(
@@ -1094,6 +1124,7 @@ public sealed partial class DashboardForm : Form
             "Block IP - Confirm",
             MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (result != DialogResult.Yes) return;
+        if (!RequireRecoveryFolder()) return;
 
         SetAlertActionsEnabled(false);
         int rc = await Task.Run(
@@ -1118,12 +1149,14 @@ public sealed partial class DashboardForm : Form
 
     private void OnKillProcessClick(object? sender, EventArgs e)
     {
+        if (!RequireRecoveryFolder()) return;
         if (_selectedAlert?.ProcessId is not int pid || pid <= 0) return;
         var result = MessageBox.Show(
             $"Terminate {_selectedAlert.ProcessName ?? "?"} (PID {pid})?\n\nA UAC prompt will appear if needed.",
             "Kill Process - Confirm",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (result != DialogResult.Yes) return;
+        if (!RequireRecoveryFolder()) return;
 
         try
         {
@@ -1148,6 +1181,7 @@ public sealed partial class DashboardForm : Form
         }
         catch
         {
+            if (!RequireRecoveryFolder()) return;
             int rc = ElevationHelper.KillProcessElevated(pid, _logger);
             if (rc == 0)
                 MarkAlertMitigated(
@@ -1187,6 +1221,17 @@ public sealed partial class DashboardForm : Form
         }
         _alertActionStates[alert] = state;
         return state;
+    }
+
+    private bool RequireRecoveryFolder()
+    {
+        if (!PackageRuntime.IsPackaged || PackagedDataFolder.TryEnsureAvailable(out var error))
+            return true;
+        MessageBox.Show(this,
+            "The response was cancelled because the app's recovery folder is unavailable.\n\n" +
+            error + "\n\nRestore access to the original folder and restart the app before trying again.",
+            "Recovery folder unavailable", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        return false;
     }
 
     private bool CanInspect(Alert alert)
@@ -1360,6 +1405,23 @@ public sealed partial class DashboardForm : Form
     {
         if (sender is not CheckBox cb || cb.Tag is not string key) return;
 
+#if STORE_BUILD
+        if (!cb.Checked && (key is "FW_DomainProfile" or "FW_PrivateProfile" or "FW_PublicProfile"))
+        {
+            SetCheckedWithoutHandler(cb, true);
+            MessageBox.Show(this,
+                "This edition can enable Windows Firewall profiles but cannot disable " +
+                "Windows security protections. Your firewall was not changed.",
+                "Windows Firewall", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (key == "DNS_DoH")
+        {
+            SetCheckedWithoutHandler(cb, false);
+            return;
+        }
+#endif
+
         switch (key)
         {
             case "Firmware":   _config.Firmware   = cb.Checked; break;
@@ -1451,7 +1513,30 @@ public sealed partial class DashboardForm : Form
         var previousProvider = _config.DNS_Provider;
         if (!force && picked == previousProvider) return;
 
+        if (picked != "None" && MessageBox.Show(this,
+            $"Apply {picked} as the DNS provider for active network adapters?\n\n" +
+            "This provider will receive subsequent DNS queries and the connection's " +
+            "public IP address. Review the provider's privacy policy before continuing. " +
+            "You can change the provider later in this app or Windows network settings.",
+            "Change DNS provider?", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+        {
+            RevertDnsCombo(cmb, previousProvider);
+            return;
+        }
+
+#if STORE_BUILD
+        // The Store edition leaves encryption controls to Windows Settings.
+        // An imported preference must not trigger the direct-registry DoH path.
+        var hadDoh = false;
+#else
         var hadDoh = _config.DNS_DoH;
+#endif
+        if (!RequireRecoveryFolder())
+        {
+            RevertDnsCombo(cmb, previousProvider);
+            return;
+        }
         var disabledPreviousDoh = false;
         cmb.Enabled = false;
         if (_dnsApplyButton is not null)
@@ -1525,7 +1610,7 @@ public sealed partial class DashboardForm : Form
                         "The DNS provider was applied and verified, but " +
                         "DNS-over-HTTPS could not be enabled. Secure DNS " +
                         "was turned off so the dashboard matches Windows.",
-                        "Whitehat Security",
+                        Installer.ProductName,
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
                     ApplyDnsControlState();
@@ -1592,7 +1677,7 @@ public sealed partial class DashboardForm : Form
             $"Could not {action}: {DescribeElevationFailure(result)}\n\n" +
             "The system was rolled back when possible. See the Console " +
             "or log for the exact Windows error.",
-            "Whitehat Security",
+            Installer.ProductName,
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning);
     }
@@ -1604,6 +1689,11 @@ public sealed partial class DashboardForm : Form
     private async Task<bool> TogglePrivilegedAsync(
         CheckBox cb, Action persist, Func<int> action)
     {
+        if (!RequireRecoveryFolder())
+        {
+            SetCheckedWithoutHandler(cb, !cb.Checked);
+            return false;
+        }
         cb.Enabled = false;
         int rc;
         try { rc = await Task.Run(action); }
@@ -1630,7 +1720,7 @@ public sealed partial class DashboardForm : Form
                 $"Could not apply '{cb.Tag}': " +
                 $"{DescribeElevationFailure(rc)}\n\n" +
                 "The checkbox has been reverted.",
-                "Whitehat Security",
+                Installer.ProductName,
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }

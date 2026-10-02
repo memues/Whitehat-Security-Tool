@@ -1,6 +1,6 @@
 # Security
 
-Whitehat Security is a local Windows monitoring and remediation tool. Its
+Whitehat Security Tool is a local Windows monitoring and remediation tool. Its
 security review reduces identified risks; it does not certify the application
 or its dependencies as free of vulnerabilities.
 

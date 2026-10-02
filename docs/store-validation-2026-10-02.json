@@ -1,0 +1,117 @@
+{
+  "SchemaVersion": 1,
+  "Date": "2026-10-02",
+  "Status": "In certification; pre-processing in progress; approval and publication pending",
+  "Product": "Whitehat Security Tool",
+  "StoreId": "9MTVDV7FSJDS",
+  "ProductVersion": "7.4.20.0",
+  "ProductSourceCommit": "8a09174649a34c86705e8c311c67da21b61cea34",
+  "TestHarnessCommit": "8d1ce50ec79859479bcccaa425b0ebdd291d71ab",
+  "UnsignedMsixSha256": "352319BE4D8A16CFCEDCE6976AC28F59CD61D932E6A9D01599C24A062F6A04A4",
+  "PackageSizeBytes": 65549984,
+  "Sandbox": {
+    "OS": "Windows 11 24H2 build 26100.9550",
+    "Administrator": true,
+    "UacEnabled": false,
+    "NetworkingEnabled": false,
+    "TotalPassed": 83,
+    "Failed": 0,
+    "Sections": [
+      {
+        "Name": "Pilot package deployment",
+        "Version": "7.4.19.0",
+        "PassedCount": 12
+      },
+      {
+        "Name": "Pilot external data and unavailable-folder behavior",
+        "Version": "7.4.19.0",
+        "PassedCount": 7
+      },
+      {
+        "Name": "Real Windows update from running pilot",
+        "Version": "7.4.19.0 -> 7.4.20.0",
+        "PassedCount": 13
+      },
+      {
+        "Name": "Windows reset and retained external data",
+        "Version": "7.4.20.0",
+        "PassedCount": 15
+      },
+      {
+        "Name": "Actual UI reattachment after reset",
+        "Version": "7.4.20.0",
+        "PassedCount": 10
+      },
+      {
+        "Name": "Windows remove and reinstall",
+        "Version": "7.4.20.0",
+        "PassedCount": 11
+      },
+      {
+        "Name": "Actual UI reattachment and setup rejection after reinstall",
+        "Version": "7.4.20.0",
+        "PassedCount": 15
+      }
+    ],
+    "Limitations": [
+      "Tested Windows11 24H2 build26100.9550 only; declared minimum Windows10 build19041 was not exercised.",
+      "Sandbox account was administrator with EnableLUA=0; standard-user elevation, UAC consent and cancellation were not exercised.",
+      "Network disabled and no DNS adapters; online integrations and functional DNS restore behavior were not exercised here.",
+      "Quarantine/remediation retention used harmless inert fixtures. This validates file preservation, not malware handling or restoration of real external system changes.",
+      "Windows package uninstall does not execute the custom EXE cleanup path. This run did not apply or prove automatic cleanup of DNS, firewall, hosts or service changes for the MSIX edition.",
+      "Guest-only self-signed package was used for sideloading. This is not a production signature or Microsoft Store certification decision.",
+      "Log hashes were compared immediately around reset/removal with app stopped. After legitimate app launch, logs were allowed to grow; config, durable marker and inert fixtures remained exact."
+    ]
+  },
+  "AutomatedTests": {
+    "NormalPassed": 56,
+    "StorePassed": 55,
+    "BuildWarnings": 0,
+    "Workflow": "https://github.com/memues/Whitehat-Security-Tool/actions/runs/36955266763",
+    "CodeQL": "https://github.com/memues/Whitehat-Security-Tool/actions/runs/36955263318",
+    "SecurityGate": "Passed after individual false-positive review; no rules or paths excluded"
+  },
+  "AgeRatings": {
+    "IarcLegalAcceptance": "Explicitly accepted by publisher and saved",
+    "AdulthoodConfirmed": true,
+    "PublisherAndEmailSharingAccepted": true,
+    "SectionStatus": "Complete",
+    "ESRB": "Everyone",
+    "PEGI": "3+",
+    "CurrentRatingId": "Pending",
+    "RatingIdObservation": "Last observed before submission; post-submission value not rechecked"
+  },
+  "PackageValidation": {
+    "NuGetAudit": "Passed",
+    "EmbeddedNotices": "Passed",
+    "MakeAppxSemanticValidation": "Passed",
+    "PartnerCenterDraftUpload": "Complete with restricted-capability approval warning",
+    "AllFormSectionsCompleteBeforeSubmission": true,
+    "SubmitForCertificationButtonEnabledBeforeSubmission": true,
+    "CertificationSubmitted": true
+  },
+  "StoreSubmission": {
+    "SubmissionNumber": 1,
+    "StatusObservedAtUtc": "2026-10-02T03:34:25Z",
+    "ExactSubmittedAtUtc": null,
+    "ObservationNote": "Timestamp records observed Partner Center status, not the exact submission time",
+    "Status": "In certification",
+    "SubmissionStage": "Completed",
+    "PreProcessingStage": "In progress",
+    "CertificationStage": "Pending",
+    "PublishingStage": "Pending",
+    "PublishingSetting": "Start publishing as soon as certification passes",
+    "Channel": "Partner Center UI",
+    "PublisherAuthorization": "Explicit renewed instruction to submit the existing package after remaining limitations were explained",
+    "LocalStoreSubmissionAttestationPassed": false,
+    "LocalStoreSubmissionGateChangedOrBypassed": false,
+    "PendingAttestationsUnchanged": true,
+    "StatusEvidence": "outputs/whitehat-store-submitted.jpg"
+  },
+  "Pending": [
+    "Microsoft runFullTrust/allowElevation and Individual-account eligibility approval",
+    "Minimum supported Windows version coverage",
+    "Standard-user UAC, consent/cancellation and different-account elevation",
+    "Actual logon/startup and external-system-change recovery, DNS and multi-user ownership"
+  ]
+}

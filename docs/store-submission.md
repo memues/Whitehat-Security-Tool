@@ -19,8 +19,11 @@ certification submission. Publisher display name: `omni.apps`; the current
 developer account type is **Individual**. The draft's category, privacy-policy
 URL, support links and x64 requirement have been saved. Properties and free
 worldwide pricing/availability are complete. English (United States) and Turkish
-(Türkiye) listing text is saved; both correctly identify the interface as English.
-Screenshots and the final candidate are still being validated. The IARC preview
+(Türkiye) listings are complete with two actual application screenshots and
+captions each; both correctly identify the interface as English. Submission
+options include explicit restricted-capability justifications and reviewer notes.
+The unsigned 7.4.20 candidate is saved in the Store draft; package acceptance
+completed with a restricted-capability approval warning. The IARC preview
 returned ESRB Everyone and PEGI 3+; its final legal acceptance is pending.
 
 An advance `allowElevation` eligibility request was sent to Microsoft's
@@ -37,6 +40,24 @@ version/OS metadata and generated assets. A successful development build proves
 packaging checks passed; it does not establish runtime compatibility or Store
 approval. The EXE remains an alternative if an accepted free-signing workflow
 becomes available.
+
+## Recorded validation
+
+The [dated validation record](store-validation-2026-10-02.json) identifies the
+exact unsigned package, product commit, test-only follow-up commit and CI runs.
+The test sequence passed 83 isolated lifecycle checks: 19 on a 7.4.19 pilot and
+64 on the final 7.4.20 update/reset/removal/reinstallation sequence. Original data
+could be reopened through actual first-launch UI after reset and reinstall.
+There were 56 normal and 55 Store smoke tests at the test-harness follow-up;
+both GitHub build jobs and the CodeQL gate passed after individual false-positive
+review. No security rule or source path was excluded.
+
+This is partial platform evidence: the guest was Windows 11 24H2 with an
+administrator account, UAC disabled and no network adapter. Minimum-OS,
+standard-user UAC, real DNS, startup/logon and multi-user external-change behavior
+remain unverified. The local sideload signature was created only inside the
+disposable guest; Microsoft Store certification and restricted-capability
+approval have not been granted.
 
 ## Implemented MSIX behavior and remaining validation
 
@@ -69,9 +90,11 @@ The Store's clean-uninstall rule does not explicitly require unconditional
 rollback of every user-directed system change, but that is not an app-specific
 acceptance decision. The proposed design must still satisfy Microsoft's review.
 
-Minimum-OS behavior, real package activation/elevation, Windows startup/update,
-observation of actual machine state, and install/reset/removal are outstanding
-verification gates. A monitoring-only edition has not been selected. Platform
+Minimum-OS behavior, standard-user package elevation, Windows logon/startup,
+observation of actual machine state, and recovery of real external changes are
+outstanding verification gates. The recorded install/update/reset/removal evidence
+is limited to the isolated guest described above. A monitoring-only edition has
+not been selected. Platform
 protection and supported-API restrictions apply to every response function.
 
 ## Free signing options
@@ -222,8 +245,10 @@ not validate the MSIX package's Windows-managed removal path.
 
 ## Partner Center handoff
 
-For the reserved **MSIX** product, use its exact assigned identity and upload the
-reviewed package only after the capability/account and runtime gates are resolved.
+For the reserved **MSIX** product, use its exact assigned identity. A development
+candidate may be uploaded to the draft for server-side validation; submit the
+reviewed package for certification only after the capability/account and runtime
+gates are resolved.
 Complete the listing, age rating, screenshots, privacy/support links and reviewer
 instructions. Explain the retained recovery folder, intentional system changes,
 explicit UAC, startup control and how to test reversal. A draft/package upload and

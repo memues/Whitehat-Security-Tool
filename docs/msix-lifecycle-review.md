@@ -105,9 +105,13 @@ performs neither a draft upload nor a certification submission.
 
 ## Lifecycle and validation matrix
 
-The implementation notes above establish which code exists. Every outcome below
-still needs packaged evidence. Existing EXE smoke tests are evidence about shared
-logic only; they do not satisfy the corresponding MSIX lifecycle checks.
+The implementation notes above establish which code exists. The
+[dated validation record](store-validation-2026-10-02.json) now records actual
+package install/update/reset/removal and data-reattachment evidence for one
+isolated Windows 11 guest. The matrix below describes the complete required
+scope; that partial evidence does not cover minimum-OS, standard-user UAC,
+logon/startup, real DNS or multi-user external-system changes. Existing EXE smoke
+tests do not by themselves satisfy the corresponding MSIX lifecycle checks.
 
 | Area | Current desktop behavior / package concern | Required outcome and review evidence |
 | --- | --- | --- |

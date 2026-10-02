@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
       - name: Restore and reject known vulnerable packages
         run: dotnet restore tests/WhitehatSecurity.SmokeTests/WhitehatSecurity.SmokeTests.csproj -p:Configuration=Release -r win-x64 -p:NuGetAudit=true -p:NuGetAuditMode=all -p:NuGetAuditLevel=low -warnaserror:NU1901,NU1902,NU1903,NU1904
       - name: Verify bundled dependency notices

@@ -4,18 +4,18 @@ Target: net8.0-windows / win-x64 (self-contained).
 Upstream rights and full notice text are preserved below; identical files are included once.
 Package-level license expressions do not replace additional component licenses in the notices.
 
-PACKAGE: Microsoft.NETCore.App.Runtime.win-x64/8.0.29
-NuGet: https://www.nuget.org/packages/Microsoft.NETCore.App.Runtime.win-x64/8.0.29
+PACKAGE: Microsoft.NETCore.App.Runtime.win-x64/8.0.31
+NuGet: https://www.nuget.org/packages/Microsoft.NETCore.App.Runtime.win-x64/8.0.31
 Source repository: https://github.com/dotnet/runtime
-Source revision: 18fd75c847399745c43b5970fec840ba71064e80
+Source revision: 1219a42122cf5190c7f512850557e38c422430dc
 Declared license: MIT
   LICENSE.TXT => TEXT-01
   THIRD-PARTY-NOTICES.TXT => TEXT-02
 
-PACKAGE: Microsoft.WindowsDesktop.App.Runtime.win-x64/8.0.29
-NuGet: https://www.nuget.org/packages/Microsoft.WindowsDesktop.App.Runtime.win-x64/8.0.29
+PACKAGE: Microsoft.WindowsDesktop.App.Runtime.win-x64/8.0.31
+NuGet: https://www.nuget.org/packages/Microsoft.WindowsDesktop.App.Runtime.win-x64/8.0.31
 Source repository: https://github.com/dotnet/windowsdesktop
-Source revision: 580168d2b82abec4ec1460077b8e62c016c031c4
+Source revision: 337963009d48a3016b50172b451b4e80f78791a7
 Declared license: MIT
   LICENSE => TEXT-03
 

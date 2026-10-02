@@ -120,9 +120,17 @@ foreach ($text in $texts) {
 }
 $content = $output.ToString()
 if ($Check) {
-    if (-not (Test-Path -LiteralPath $OutputPath -PathType Leaf) -or
-        [IO.File]::ReadAllText([IO.Path]::GetFullPath($OutputPath)) -cne $content) {
-        throw 'Third-party notices differ from the restored packages. Regenerate and review before publishing.'
+    $storedContent = if (Test-Path -LiteralPath $OutputPath -PathType Leaf) {
+        [IO.File]::ReadAllText([IO.Path]::GetFullPath($OutputPath))
+    } else { '' }
+    if ($storedContent -cne $content) {
+        $storedPackages = @([regex]::Matches($storedContent, '(?m)^PACKAGE: ([^\r\n]+)') |
+            ForEach-Object { $_.Groups[1].Value })
+        $storedSummary = if ($storedPackages.Count -gt 0) { $storedPackages -join ', ' } else { '(none)' }
+        $restoredSummary = $records.Package -join ', '
+        throw ("Third-party notices differ from the restored packages.`n" +
+            "Stored packages: $storedSummary`nRestored packages: $restoredSummary`n" +
+            'Regenerate and review before publishing. Matching package versions can still have different notice text.')
     }
     Write-Output "Verified notices for $($records.Count) runtime packages ($($texts.Count) complete unique texts)."
 } else {

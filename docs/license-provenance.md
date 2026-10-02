@@ -55,5 +55,14 @@ notices. Review new dependency terms when updating packages; generation of this
 file alone is not an assessment of a new dependency's compatibility.
 
 CI, GitHub release builds, and the Store EXE build script run this check after
-restore. The SDK currently permits patch updates, so a newer runtime package
-intentionally requires refreshing and reviewing this file before release.
+restore. [global.json](../global.json) pins SDK 8.0.425 with roll-forward disabled;
+CI and release workflows install that exact SDK from the same file. Local builds
+must also use this SDK so that its self-contained runtime defaults match CI.
+
+When upgrading the SDK, update `global.json`, install the selected SDK, restore,
+and regenerate the notices with the commands above. Review the changed package
+versions, source revisions, license terms, and full notice texts together before
+committing the SDK and notice updates. The `-Check` gate deliberately fails if
+the restored packages or their notice content differ from the checked-in file;
+its diagnostic lists the stored and restored package versions without dumping
+the license texts.
